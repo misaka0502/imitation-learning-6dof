@@ -1,0 +1,42 @@
+defaults:
+  - _self_
+  - actor: diffusion
+  - vision_encoder: vip
+  - early_stopper
+  - rollout: default
+  - training
+  - regularization
+  - data
+  - multitask: default
+
+hydra:
+  run:
+    dir: "${oc.env:RUN_OUTPUT_DIR,./outputs}/${now:%Y-%m-%d}/${now:%H-%M-%S}"
+
+action_horizon: 8
+pred_horizon: 16
+obs_horizon: 2
+observation_type: image
+furniture: ???
+environment: sim
+demo_source: teleop
+randomness: low
+discount: 0.999
+demo_outcome: success
+
+control:
+  act_rot_repr: rot_6d
+  control_mode: pos # delta, pos
+
+lr_scheduler:
+  name: cosine
+  warmup_steps: 500
+
+wandb:
+  project: hydra-test
+  notes: null
+  mode: online
+  continue_run_id: null
+  name: null
+
+dryrun: false
