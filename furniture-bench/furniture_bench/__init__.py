@@ -68,9 +68,3 @@ register(
     id="FurnitureImageFeatureDummy-v0",
     entry_point="furniture_bench.envs.policy_envs.furniture_image_feature_dummy:FurnitureImageFeatureDummy",
 )
-
-# FurnitureSim environment for RL
-register(
-    id="FurnitureSimRL-v0",
-    entry_point="furniture_bench.envs.furniture_rl_sim_env:FurnitureRLSimEnv",
-)

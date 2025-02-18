@@ -21,7 +21,8 @@ class KeyboardInterface(DeviceInterface):
 
     ADJUST_DELTA = ["[", "]"]
 
-    INIT_POS_DELTA = 0.02
+    # INIT_POS_DELTA = 0.02
+    INIT_POS_DELTA = 0.01
     INIT_ROT_DELTA = 0.2  # Radian.
 
     MAX_POS_DELTA = 0.1

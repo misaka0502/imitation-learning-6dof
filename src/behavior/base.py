@@ -49,8 +49,8 @@ class Actor(torch.nn.Module, metaclass=PostInitCaller):
     encoder2_proj: nn.Module
 
     # 在这里修改位姿估计的长度，由于用的是四元数表示，所以一个零件有7个数值
-    # parts_poses_dim: int = 7
-    parts_poses_dim: int = 35
+    parts_poses_dim: int = 7
+    # parts_poses_dim: int = 35
 
     def __post_init__(self, *args, **kwargs):
         assert self.encoder1 is not None, "encoder1 is not defined"
@@ -82,10 +82,7 @@ class Actor(torch.nn.Module, metaclass=PostInitCaller):
         And concatenates them into a single tensor of shape (n_envs, obs_horizon * obs_dim)
         """
         # Convert robot_state from obs_horizon x (n_envs, 14) -> (n_envs, obs_horizon, 14)
-        # print(f'obs len: {len(obs)}')
-        # print(f'o["robot_state"].shape: {obs[0]["robot_state"].shape}')
         robot_state = torch.cat([o["robot_state"].unsqueeze(1) for o in obs], dim=1)
-        # print(f'robot_state.shape: {robot_state.shape}')
 
         # Convert the robot_state to use rot_6d instead of quaternion
         robot_state = proprioceptive_quat_to_6d_rotation(robot_state)
@@ -131,9 +128,9 @@ class Actor(torch.nn.Module, metaclass=PostInitCaller):
         # Apply the regularization to the features
         feature1, feature2 = self.regularize_features(feature1, feature2)
         # 只取最后一个零件的位姿（即画面中最右边的桌腿）
-        # parts_poses: torch.Tensor = torch.cat([o["parts_poses"].unsqueeze(1)[:, :, -7:] for o in obs], dim=1)
+        parts_poses: torch.Tensor = torch.cat([o["parts_poses"].unsqueeze(1)[:, :, -7:] for o in obs], dim=1)
         # 取所有零件的位姿
-        parts_poses: torch.Tensor = torch.cat([o["parts_poses"].unsqueeze(1) for o in obs], dim=1)
+        # parts_poses: torch.Tensor = torch.cat([o["parts_poses"].unsqueeze(1) for o in obs], dim=1)
         # Reshape concatenate the features
         nobs = torch.cat([nrobot_state, feature1, feature2, parts_poses], dim=-1)
         # nobs = torch.cat([nrobot_state, feature1, feature2], dim=-1)

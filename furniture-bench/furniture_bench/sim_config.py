@@ -28,28 +28,17 @@ sim_params = gymapi.SimParams()
 sim_params.up_axis = gymapi.UP_AXIS_Z
 sim_params.gravity = gymapi.Vec3(0.0, 0.0, -9.8)
 sim_params.dt = 1.0 / 60.0
-
-# Increasing this can make the simulation more stable.
 sim_params.substeps = 2
 sim_params.use_gpu_pipeline = True
 sim_params.physx.solver_type = 1
 sim_params.physx.bounce_threshold_velocity = 0.02
-
-# Increasing this can make the simulation more stable.
 sim_params.physx.num_position_iterations = 20
 sim_params.physx.num_velocity_iterations = 1
 sim_params.physx.rest_offset = 0.0
 sim_params.physx.contact_offset = 0.002
 sim_params.physx.friction_offset_threshold = 0.01
 sim_params.physx.friction_correlation_distance = 0.0005
-sim_params.physx.max_depenetration_velocity = 10
 sim_params.physx.use_gpu = True
-
-# Can set these if contacts are being weird
-# print(sim_params.physx.max_gpu_contact_pairs)
-# print(sim_params.physx.default_buffer_size_multiplier)
-sim_params.physx.max_gpu_contact_pairs = 4*1024*1024  # 50 * 1024 * 1024
-sim_params.physx.default_buffer_size_multiplier = 8.0
 
 sim_config["sim_params"] = sim_params
 sim_config["parts"] = {"friction": 0.15}
@@ -224,8 +213,8 @@ sim_config["asset"]["chair_nut2"] = chair_nut1_asset_options
 # Volume:  78694 mm^3
 # Mass: 59.99g
 lamp_hood_asset_options = default_asset_options()
-lamp_hood_asset_options.density = 762.31
-# lamp_hood_asset_options.density = 200
+# lamp_hood_asset_options.density = 762.31
+lamp_hood_asset_options.density = 200
 sim_config["asset"]["lamp_hood"] = lamp_hood_asset_options
 
 # Volume:  174649 mm^3
@@ -237,9 +226,9 @@ sim_config["asset"]["lamp_base"] = lamp_base_asset_options
 # Volume: 70576 mm^3
 # Mass: 38.47g
 lamp_bulb_asset_options = default_asset_options()
-lamp_bulb_asset_options.density = 545.09
+# lamp_bulb_asset_options.density = 545.09
 # lamp_bulb_asset_options.density = 369.98
-# lamp_bulb_asset_options.density = 100
+lamp_bulb_asset_options.density = 100
 sim_config["asset"]["lamp_bulb"] = lamp_bulb_asset_options
 
 # Stool
@@ -256,31 +245,3 @@ stool_leg1_asset_options.density = 333.66
 sim_config["asset"]["stool_leg1"] = stool_leg1_asset_options
 sim_config["asset"]["stool_leg2"] = stool_leg1_asset_options
 sim_config["asset"]["stool_leg3"] = stool_leg1_asset_options
-
-rack_asset_options = default_asset_options()
-rack_asset_options.density = 100.00
-sim_config["asset"]["rack"] = rack_asset_options
-
-mug_asset_options = default_asset_options()
-mug_asset_options.density = 100.00
-sim_config["asset"]["mug"] = mug_asset_options
-
-factory_nut_asset_options = default_asset_options()
-# factory_nut_asset_options.density = 1000.00
-factory_nut_asset_options.density = 500.00
-sim_config["asset"]["factory_nut"] = factory_nut_asset_options
-
-factory_bolt_asset_options = default_asset_options()
-# factory_bolt_asset_options.density = 1000.00
-factory_bolt_asset_options.density = 500.00
-sim_config["asset"]["factory_bolt"] = factory_bolt_asset_options
-
-factory_peg_asset_options = default_asset_options()
-# factory_peg_asset_options.density = 1000.00
-factory_peg_asset_options.density = 500.00
-sim_config["asset"]["factory_peg"] = factory_peg_asset_options
-
-factory_hole_asset_options = default_asset_options()
-# factory_hole_asset_options.density = 1000.00
-factory_hole_asset_options.density = 500.00
-sim_config["asset"]["factory_hole"] = factory_hole_asset_options

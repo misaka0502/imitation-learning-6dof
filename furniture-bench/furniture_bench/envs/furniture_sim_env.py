@@ -383,12 +383,6 @@ class FurnitureSimEnv(gym.Env):
                 franka_dof_props["friction"][:7] = sim_config["robot"]["arm_frictions"]
             else:
                 franka_dof_props["driveMode"][:7].fill(gymapi.DOF_MODE_POS)
-                # Kq_new = (
-                #     torch.Tensor([150.0, 120.0, 160.0, 100.0, 110.0, 100.0, 40.0]) * 8
-                # )
-                # Kqd_new = torch.Tensor([20.0, 20.0, 20.0, 20.0, 12.0, 12.0, 8.0]) * 8
-                # franka_dof_props["stiffness"][:7] = Kq_new
-                # franka_dof_props["damping"][:7] = Kqd_new
                 franka_dof_props["stiffness"][:7].fill(1000.0)
                 franka_dof_props["damping"][:7].fill(200.0)
 
@@ -1090,8 +1084,8 @@ class FurnitureSimEnv(gym.Env):
             "finger_joint_1": self.dof_pos[:, 7:8],
             "finger_joint_2": self.dof_pos[:, 8:9],
         }
-        # return {k: robot_state_dict[k] for k in self.robot_state_keys}
-        return robot_state_dict
+        return {k: robot_state_dict[k] for k in self.robot_state_keys}
+        # return robot_state_dict
 
     def refresh(self):
         self.isaac_gym.simulate(self.sim)
@@ -1304,17 +1298,18 @@ class FurnitureSimEnv(gym.Env):
         self._reset_franka_all()
         self._reset_parts_all()
         # for i in range(self.num_envs):
-        #     # if using ._reset_*_all(), can set reset_franka=False and reset_parts=False in .reset_env
-        #     self.reset_env(i)
+            # if using ._reset_*_all(), can set reset_franka=False and reset_parts=False in .reset_env
+            # self.reset_env(i)
 
-        #     if self.ctrl_mode == "osc":
-        #         # apply zero torque across the board and refresh in between each env reset (not needed if using ._reset_*_all())
-        #         torque_action = torch.zeros_like(self.dof_pos)
-        #         self.isaac_gym.set_dof_actuation_force_tensor(
-        #             self.sim, gymtorch.unwrap_tensor(torque_action)
-        #         )
-        #     self.refresh()
+            # if self.ctrl_mode == "osc":
+            #     # apply zero torque across the board and refresh in between each env reset (not needed if using ._reset_*_all())
+            #     torque_action = torch.zeros_like(self.dof_pos)
+            #     self.isaac_gym.set_dof_actuation_force_tensor(
+            #         self.sim, gymtorch.unwrap_tensor(torque_action)
+            #     )
+            # self.refresh()
 
+        self.env_steps[:] = 0
         self.furniture.reset()
 
         self.refresh()

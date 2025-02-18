@@ -1,5 +1,4 @@
 """Define base class for all furniture. It contains the core functions and properties for the furniture (e.g., furniture parts, computing reward function, getting observation,etc.)"""
-
 from abc import ABC
 import time
 import multiprocessing as mp
@@ -18,8 +17,6 @@ from furniture_bench.utils.detection import detection_loop
 from furniture_bench.furniture.parts.obstacle_front import ObstacleFront
 from furniture_bench.furniture.parts.obstacle_right import ObstacleRight
 from furniture_bench.furniture.parts.obstacle_left import ObstacleLeft
-
-from ipdb import set_trace as bp
 
 
 class Furniture(ABC):
@@ -82,7 +79,7 @@ class Furniture(ABC):
                 logger.error("Failed to randomize init pose")
                 return False
             if self._in_boundary(from_skill) and not self._check_collision():
-                # logger.info("Found collision-free init pose")
+                logger.info("Found collision-free init pose")
                 return True
 
     def randomize_high(self, high_random_idx: int):
@@ -117,7 +114,7 @@ class Furniture(ABC):
                 logger.error("Failed to randomize init pose")
                 return False
             if not self._check_collision(from_skill) and self._in_boundary(from_skill):
-                # logger.info("Found initialization pose")
+                logger.info("Found initialization pose")
                 return True
 
     def _check_collision(self):

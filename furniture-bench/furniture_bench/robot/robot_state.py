@@ -5,8 +5,6 @@ from enum import Enum
 
 import numpy as np
 
-from ipdb import set_trace as bp
-
 
 # List of robot state we are going to use during training and testing.
 ROBOT_STATES = [
@@ -15,6 +13,9 @@ ROBOT_STATES = [
     "ee_pos_vel",
     "ee_ori_vel",
     "gripper_width",
+    "joint_positions",
+    "joint_velocities",
+    "joint_torques",
 ]
 
 ROBOT_STATE_DIMS = {
@@ -32,11 +33,8 @@ ROBOT_STATE_DIMS = {
 def filter_and_concat_robot_state(robot_state):
     current_robot_state = []
     for rs in ROBOT_STATES:
-        if rs not in robot_state:
-            continue
-
-        if rs == "gripper_width":
-            robot_state[rs] = np.array([robot_state[rs]]).reshape(1)
+        if rs == "gripper_width" and robot_state[rs].shape == ():
+            robot_state[rs] = np.array([robot_state[rs]])
         current_robot_state.append(robot_state[rs])
     return np.concatenate(current_robot_state, axis=-1)
 

@@ -295,11 +295,11 @@ def rollout(
         if done.all():
             if reader is not None:
                 center_pose = pose@np.linalg.inv(to_origin)
-                pose_end = pose
+                pose_end_april_coord = cam_coord_to_april_coord(pose)
                 vis_end = draw_posed_3d_box(reader.K, img=color, ob_in_cam=center_pose, bbox=bbox)
                 vis_end = draw_xyz_axis(color, ob_in_cam=center_pose, scale=0.1, K=reader.K, thickness=3, transparency=0, is_input_rgb=True)
                 cv2.imwrite(f'{debug_dir}/rollouts_vis/{iter:019d}_end.png', vis_end)
-                np.savetxt(f'{debug_dir}/rollouts_ob/{iter:019d}_end.txt', pose_end.reshape(4,4))
+                np.savetxt(f'{debug_dir}/rollouts_ob/{iter:019d}_end.txt', pose_end_april_coord)
             pil_color_image2 = to_pil_image(color_image2_raw.squeeze(0).permute(2, 0, 1))
             pil_color_image2.save(f"{debug_dir}/rollouts_vis/{iter:019d}_end_raw.png")
             break
@@ -315,8 +315,8 @@ def rollout(
             torch.stack(six_dof_poses, dim=0),
             vis_begin,
             vis_end,
-            pose_begin,
-            pose_end
+            pose_begin_april_coord,
+            pose_end_april_coord
         )
     else:
         return (
@@ -376,7 +376,7 @@ def calculate_success_rate(
         mesh_file = f'{code_dir}/foundationpose/demo_data/square_table_leg/mesh/square_table_leg4.obj'
         test_scene_dir = f'{code_dir}/foundationpose/demo_data/square_table_leg'
         # debug_dir = f'{code_dir}/foundationpose/debug/{time_now}'
-        debug = 0
+        debug = 1
         set_logging_format()
         # set_seed(0)
         mesh = trimesh.load(mesh_file, force='mesh')
@@ -460,30 +460,14 @@ def calculate_success_rate(
 
         # Calculate the success rate
         success = rewards.sum(dim=1) == n_parts_assemble
-        # if success and debug==1:
-        #     cv2.imwrite(f'{debug_dir}/rollouts_vis/{i:019d}_begin.png', vis_begin)
-        #     np.savetxt(f'{debug_dir}/rollouts_ob/{i:019d}_begin.txt', pose_begin.reshape(4,4))
-        #     cv2.imwrite(f'{debug_dir}/rollouts_vis/{i:019d}_end.png', vis_end)
-        #     np.savetxt(f'{debug_dir}/rollouts_ob/{i:019d}_end.txt', pose_end.reshape(4,4))
-        #     np.savetxt(f"{debug_dir}/leg_poses.txt", parts_poses.squeeze(0)[:, -7:].numpy())
-        #     np.savetxt(f"{debug_dir}/parts_poses.txt", parts_poses.squeeze(0).numpy())
-        #     os.system(f'mkdir -p {debug_dir}/rollouts_vis {debug_dir}/rollouts_ob {debug_dir}/rollouts_ob/6dofPoses')
-        #     for i in range(len(six_dof_poses)):
-        #         np.savetxt(f"{debug_dir}/rollouts_ob/6dofPoses/{i}.txt", six_dof_poses.squeeze(0)[i].numpy())
-        #     print("collection finish!!!")
-        #     time.sleep(100000000)
         if debug == 1:
             cv2.imwrite(f'{debug_dir}/rollouts_vis/{i:019d}_begin.png', vis_begin)
-            np.savetxt(f'{debug_dir}/rollouts_ob/{i:019d}_begin.txt', pose_begin.reshape(4,4))
+            np.savetxt(f'{debug_dir}/rollouts_ob/{i:019d}_begin.txt', pose_begin)
             cv2.imwrite(f'{debug_dir}/rollouts_vis/{i:019d}_end.png', vis_end)
-            np.savetxt(f'{debug_dir}/rollouts_ob/{i:019d}_end.txt', pose_end.reshape(4,4))
+            np.savetxt(f'{debug_dir}/rollouts_ob/{i:019d}_end.txt', pose_end)
             np.savetxt(f"{debug_dir}/leg_poses.txt", parts_poses.squeeze(0)[:, -7:].numpy())
             np.savetxt(f"{debug_dir}/parts_poses.txt", parts_poses.squeeze(0).numpy())
-            # os.system(f'mkdir -p {debug_dir}/rollouts_vis {debug_dir}/rollouts_ob {debug_dir}/rollouts_ob/6dofPoses')
-            # for k in range(len(six_dof_poses)):
-            #     np.savetxt(f"{debug_dir}/rollouts_ob/6dofPoses/{k}.txt", six_dof_poses.squeeze(0)[k].numpy())
-            # print("collection finish!!!")
-            # time.sleep(100000000)
+
         n_success += success.sum().item()
 
         # Save the results from the rollout
@@ -493,7 +477,6 @@ def calculate_success_rate(
         all_actions.extend(actions)
         all_rewards.extend(rewards)
         all_parts_poses.extend(parts_poses)
-        # all_6dof_poses.extend(six_dof_poses)
         all_success.extend(success)
 
         # Update the progress bar

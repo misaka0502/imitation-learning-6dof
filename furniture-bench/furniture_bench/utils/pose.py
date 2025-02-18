@@ -66,6 +66,10 @@ def get_mat(pos: List[float], angles: Union[List[float], npt.NDArray[np.float32]
     return transform
 
 
+def cosine_sim(w, v):
+    return np.dot(w, v) / (np.linalg.norm(w) * np.linalg.norm(v))
+
+
 def comp_avg_pose(poses):
     np.set_printoptions(suppress=True)
     quats = []
@@ -84,10 +88,6 @@ def comp_avg_pose(poses):
     avg_rot = T.quat2mat(T.convert_quat(avg_quat, "xyzw"))
     avg_pos = positions.mean(axis=0)
     return T.to_homogeneous(avg_pos, avg_rot)
-
-
-def cosine_sim(w, v):
-    return np.dot(w, v) / (np.linalg.norm(w) * np.linalg.norm(v))
 
 
 def is_similar_pose(pose1, pose2, ori_bound=0.99, pos_threshold=[0.01, 0.007, 0.007]):

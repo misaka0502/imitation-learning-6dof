@@ -7,8 +7,7 @@ import numpy as np
 
 from furniture_bench.utils.pose import get_mat, rot_mat
 
-# ROBOT_HEIGHT = 0.015  # Approximate height of bench clamp: 1.5 cm.
-ROBOT_HEIGHT = 0.0  # Not using bench clamp.
+ROBOT_HEIGHT = 0.015  # Approximate height of bench clamp: 1.5 cm.
 
 # Fill in information below or define environment variables.
 SERVER_IP = os.getenv("SERVER_IP", "")
@@ -44,9 +43,6 @@ config: Dict[str, Any] = {
             "round_table": 0.065,
             "cabinet": 0.08,
             "lamp": 0.07,
-            "mug_rack": 0.07,
-            "factory_peg_hole": 0.07,
-            "factory_nut_bolt": 0.07,
         },
         "position_limits": [
             [0.3, 0.8],
@@ -741,8 +737,7 @@ config: Dict[str, Any] = {
                 "name": "round_table_top",
                 "asset_file": "furniture/urdf/round_table/round_table_top.urdf",
                 "ids": [24, 25, 26, 27, 28, 29, 30, 31],
-                # "reset_pos": [[0, 0.24, -0.001]] * 2 + [[0.07, 0.26, -0.001]] * 3,
-                "reset_pos": [[0, 0.205, -0.001]] * 2 + [[0.07, 0.26, -0.001]] * 3,
+                "reset_pos": [[0, 0.24, -0.001]] * 2 + [[0.07, 0.26, -0.001]] * 3,
                 "reset_ori": [rot_mat(np.array([0, np.pi, 0]), hom=True)] * 5,
                 "part_moved_skill_idx": 2,
                 "high_rand_reset_pos": [
@@ -1496,7 +1491,7 @@ config: Dict[str, Any] = {
                 #     [0.07, 0.37],
                 # ],  # Furniture parts position limits.
                 # "reset_pos": [[0.18, 0.13, -0.016]] * 4 + [[0.12, 0.31, -0.09]],
-                "reset_pos": [[-0.05, 0.235, -0.016]] * 4 + [[0.12, 0.31, -0.09]],
+                "reset_pos": [[-0.05, 0.27, -0.016]] * 4 + [[0.12, 0.31, -0.09]],
                 "reset_ori": [rot_mat(np.array([-np.arctan2(7.6, 52), 0, 0]), hom=True)]
                 * 4
                 + [rot_mat([-np.pi / 2, 0, 0], hom=True)],
@@ -1997,64 +1992,6 @@ config: Dict[str, Any] = {
                     [0.0, -0.07750, 0], [0, -np.pi / 2, 0]
                 ),
             },
-        },
-        "mug_rack": {
-            "rack": {
-                "name": "rack",
-                "asset_file": "furniture/scans/urdf/mug_rack/rack.urdf",
-                "ids": [0],
-                "reset_pos": [[0.4, -0.175, 0.0025]],
-                "reset_ori": [rot_mat(np.array([np.pi / 2, 0, np.pi / 2]), hom=True)],
-            },
-            "mug": {
-                "name": "mug",
-                "asset_file": "furniture/scans/urdf/mug_rack/mug.urdf",
-                "ids": [0],
-                "reset_pos": [[0.4, 0.175, 0.0025]],
-                "reset_ori": [rot_mat(np.array([np.pi / 2, 0, 0]), hom=True)],
-            },
-            "tag_size": 0.0195,
-            "assembly_json_fname": "furniture/scans/json/mug_rack/assembly.json",
-        },
-        "factory_peg_hole": {
-            "factory_hole": {
-                "name": "factory_hole",
-                # "asset_file": "furniture/scans/urdf/factory_rectangular_hole_8mm.urdf",
-                "asset_file": "furniture/scans/urdf/factory_rectangular_hole_16mm.urdf",
-                "ids": [0],
-                "reset_pos": [[0.4, -0.05, 0.01]],
-                "reset_ori": [rot_mat(np.array([0, 0, 0]), hom=True)],
-            },
-            "factory_peg": {
-                "name": "factory_peg",
-                # "asset_file": "furniture/scans/urdf/factory_rectangular_peg_8mm_tight.urdf",
-                "asset_file": "furniture/scans/urdf/factory_rectangular_peg_16mm_tight.urdf",
-                "ids": [0],
-                "reset_pos": [[0.4, 0.05, 0.01]],
-                "reset_ori": [rot_mat(np.array([0, 0, 0]), hom=True)],
-            },
-            "tag_size": 0.0195,
-            "assembly_json_fname": "furniture/scans/json/factory_peg_hole/assembly.json",
-        },
-        "factory_nut_bolt": {
-            "factory_nut": {
-                "name": "factory_nut",
-                # "asset_file": "furniture/scans/urdf/factory_nut_m8_tight.urdf",
-                "asset_file": "furniture/scans/urdf/factory_nut_m20_tight.urdf",
-                "ids": [0],
-                "reset_pos": [[0.4, -0.175, 0.05]],
-                "reset_ori": [rot_mat(np.array([0, 0, 0]), hom=True)],
-            },
-            "factory_bolt": {
-                "name": "factory_bolt",
-                # "asset_file": "furniture/scans/urdf/factory_bolt_m8_tight.urdf",
-                "asset_file": "furniture/scans/urdf/factory_bolt_m20_tight.urdf",
-                "ids": [0],
-                "reset_pos": [[0.4, 0.175, 0.05]],
-                "reset_ori": [rot_mat(np.array([0, 0, 0]), hom=True)],
-            },
-            "tag_size": 0.0195,
-            "assembly_json_fname": "furniture/scans/json/factory_nut_bolt/assembly.json",
         },
     },
 }
