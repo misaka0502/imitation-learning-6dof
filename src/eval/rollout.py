@@ -171,23 +171,6 @@ def rollout(
             masks = [readers[i].get_mask(0).astype(bool) for i in range(num_poses)]
             poses_begin = [ests[i].register(K=readers[i].K, rgb=colors[i], depth=depths[i], ob_mask=masks[i], iteration=5) for i in range(num_poses)]
 
-            # color_img = obs["color_image2"].squeeze(0).cpu().numpy()
-            # color = reader.get_color(color_img)
-            # depth_img = obs["depth_image2"].squeeze(0).cpu().numpy() * 1000
-            # depth_img = depth_img.astype(np.uint16)
-            # depth_img = 65535 - depth_img
-            # depth = reader.get_depth(depth_img)
-            # color_img2 = obs["color_image4"].squeeze(0).cpu().numpy()
-            # color2 = reader2.get_color(color_img2)
-            # depth_img2 = obs["depth_image4"].squeeze(0).cpu().numpy() * 1000
-            # depth_img2 = depth_img2.astype(np.uint16)
-            # depth_img2 = 65535 - depth_img2
-            # depth2 = reader2.get_depth(depth_img2)
-            # mask = reader.get_mask(0).astype(bool)
-            # mask2 = reader2.get_mask(0).astype(bool)
-            # pose_begin = est.register(K=reader.K, rgb=color, depth=depth, ob_mask=mask, iteration=5)
-            # pose_begin2 = est2.register(K=reader2.K, rgb=color2, depth=depth2, ob_mask=mask2, iteration=5)
-
             if debug >= 1:
                 center_poses = [poses_begin[i]@np.linalg.inv(to_origins[i]) for i in range(num_poses)]
                 vis_begins = [draw_posed_3d_box(readers[i].K, img=colors[i], ob_in_cam=center_poses[i], bbox=bboxs[i]) for i in range(num_poses)]
@@ -237,54 +220,19 @@ def rollout(
         action_pred = actor.action(obs_deque)
 
         obs, reward, done, _ = env.step(action_pred)
-        # color_img = obs["color_image2"].squeeze(0).cpu().numpy()
-        # cv2.imwrite(f'{debug_dir}/rollouts_vis/leg/rgb/{step_idx:019d}.png', color_img)
-        # color_img = obs["color_image4"].squeeze(0).cpu().numpy()
-        # cv2.imwrite(f'{debug_dir}/rollouts_vis/top/rgb/{step_idx:019d}.png', color_img)
-        # depth_img = obs["depth_image2"].squeeze(0).cpu().numpy() * 1000
-        # depth_img = depth_img.astype(np.uint16)
-        # depth_img = 65535 - depth_img
-        # cv2.imwrite(f'{debug_dir}/rollouts_vis/leg/depth/{step_idx:019d}.png', depth_img)
-        # depth_img = obs["depth_image4"].squeeze(0).cpu().numpy() * 1000
-        # depth_img = depth_img.astype(np.uint16)
-        # depth_img = 65535 - depth_img
-        # cv2.imwrite(f'{debug_dir}/rollouts_vis/top/depth/{step_idx:019d}.png', depth_img)
 
         video_obs = obs.copy()
 
         if readers is not None:
             with suppress_all_output(True):
-                # color_img = obs["color_image2"].squeeze(0).cpu().numpy()
-                # color = reader.get_color(color_img)
-                # depth_img = obs["depth_image2"].squeeze(0).cpu().numpy() * 1000
-                # depth_img = depth_img.astype(np.uint16)
-                # depth_img = 65535 - depth_img
-                # depth = reader.get_depth(depth_img)
-                # color_img2 = obs["color_image4"].squeeze(0).cpu().numpy()
-                # color2 = reader.get_color(color_img2)
-                # depth_img2 = obs["depth_image4"].squeeze(0).cpu().numpy() * 1000
-                # depth_img2 = depth_img2.astype(np.uint16)
-                # depth_img2 = 65535 - depth_img2
-                # depth2 = reader.get_depth(depth_img2)
-                
-                # pose = est.track_one(rgb=color, depth=depth, K=reader.K, iteration=2)
-                # pose2 = est2.track_one(rgb=color2, depth=depth2, K=reader2.K, iteration=2)
-
                 colors = [readers[i].get_color(obs[f"color_image{camera_idx[i]}"].squeeze(0).cpu().numpy()) for i in range(num_poses)]
                 depths = [readers[i].get_depth(65535-(obs[f"depth_image{camera_idx[i]}"].squeeze(0).cpu().numpy() * 1000).astype(np.uint16)) for i in range(num_poses)]
                 masks = [readers[i].get_mask(0).astype(bool) for i in range(num_poses)]
                 poses = [ests[i].track_one(rgb=colors[i], depth=depths[i], K=readers[i].K, iteration=2) for i in range(num_poses)]
-                
-                # os.makedirs(f'{debug_dir}/ob_in_cam', exist_ok=True)
-                # np.savetxt(f'{debug_dir}/rollouts_ob/leg/{step_idx:4d}.txt', pose.reshape(4,4))
-                # np.savetxt(f'{debug_dir}/rollouts_ob/top/{step_idx:4d}.txt', pose2.reshape(4,4))
+
                 if save_flag:
                     center_poses = [poses[i]@np.linalg.inv(to_origins[i]) for i in range(num_poses)]
                     vis = [draw_posed_3d_box(readers[i].K, img=colors[i], ob_in_cam=center_poses[i], bbox=bboxs[i]) for i in range(num_poses)]
-                    # center_pose = pose@np.linalg.inv(to_origin)
-                    # center_pose2 = pose2@np.linalg.inv(to_origin2)
-                    # vis = draw_posed_3d_box(reader.K, img=color, ob_in_cam=center_pose, bbox=bbox)
-                    # vis2 = draw_posed_3d_box(reader2.K, img=color2, ob_in_cam=center_pose2, bbox=bbox2)
                     imageio.imwrite(f'{debug_dir}/track_vis/leg/{step_idx:019d}.png', vis[0])
                     imageio.imwrite(f'{debug_dir}/track_vis/top/{step_idx:019d}.png', vis[1])
                 if debug>=2:
