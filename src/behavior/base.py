@@ -49,7 +49,8 @@ class Actor(torch.nn.Module, metaclass=PostInitCaller):
     encoder2_proj: nn.Module
 
     # 在这里修改位姿估计的长度，由于用的是四元数表示，所以一个零件有7个数值
-    parts_poses_dim: int = 7
+    # parts_poses_dim: int = 7
+    parts_poses_dim: int = 14
     # parts_poses_dim: int = 35
 
     def __post_init__(self, *args, **kwargs):
@@ -117,22 +118,26 @@ class Actor(torch.nn.Module, metaclass=PostInitCaller):
         image1 = image1.permute(0, 2, 3, 1)
         image2 = image2.permute(0, 2, 3, 1)
 
-        # Encode the images and reshape back to (B, obs_horizon, -1)
-        feature1: torch.Tensor = self.encoder1_proj(self.encoder1(image1)).reshape(
-            B, self.obs_horizon, -1
-        )
-        feature2: torch.Tensor = self.encoder2_proj(self.encoder2(image2)).reshape(
-            B, self.obs_horizon, -1
-        )
+        # # Encode the images and reshape back to (B, obs_horizon, -1)
+        # feature1: torch.Tensor = self.encoder1_proj(self.encoder1(image1)).reshape(
+        #     B, self.obs_horizon, -1
+        # )
+        # feature2: torch.Tensor = self.encoder2_proj(self.encoder2(image2)).reshape(
+        #     B, self.obs_horizon, -1
+        # )
 
-        # Apply the regularization to the features
-        feature1, feature2 = self.regularize_features(feature1, feature2)
-        # 只取最后一个零件的位姿（即画面中最右边的桌腿）
+        # # Apply the regularization to the features
+        # feature1, feature2 = self.regularize_features(feature1, feature2)
+        # 取最后一个零件的位姿（即画面中最右边的桌腿）
         parts_poses: torch.Tensor = torch.cat([o["parts_poses"].unsqueeze(1)[:, :, -7:] for o in obs], dim=1)
+        # 取square_table_top的位姿
+        parts_poses_top: torch.Tensor = torch.cat([o["parts_poses"].unsqueeze(1)[:, :, :7] for o in obs], dim=1)
         # 取所有零件的位姿
         # parts_poses: torch.Tensor = torch.cat([o["parts_poses"].unsqueeze(1) for o in obs], dim=1)
         # Reshape concatenate the features
-        nobs = torch.cat([nrobot_state, feature1, feature2, parts_poses], dim=-1)
+        # nobs = torch.cat([nrobot_state, feature1, feature2, parts_poses], dim=-1)
+        nobs = torch.cat([nrobot_state, parts_poses, parts_poses_top], dim=-1)
+        # nobs = torch.cat([nrobot_state, feature1, feature2, parts_poses, parts_poses_top], dim=-1)
         # nobs = torch.cat([nrobot_state, feature1, feature2], dim=-1)
 
         if flatten:
@@ -196,6 +201,7 @@ class Actor(torch.nn.Module, metaclass=PostInitCaller):
             # 每个部件位姿信息由7个数值组成，前三个数值代表部件在空间中的Position，单位为m；后四个数值代表部件的姿态，以四元数形式表示
             # todo：比较部件姿态用四元数还是rpy好
             part_poses: torch.Tensor = batch["parts_poses"][:, :, -7:]
+            part_poses_top: torch.Tensor = batch["parts_poses"][:, :, :7]
             # part_poses: torch.Tensor = batch["parts_poses"]
             # print(f"parts_poses_batch_size: {parts_poses.shape}")
             # print(f"image_batch_size: {image1.shape}")
@@ -205,20 +211,22 @@ class Actor(torch.nn.Module, metaclass=PostInitCaller):
             image2 = image2.reshape(B * self.obs_horizon, *image2.shape[-3:])
 
             # Encode images and reshape back to (B, obs_horizon, encoding_dim)
-            feature1 = self.encoder1_proj(self.encoder1(image1)).reshape(
-                B, self.obs_horizon, -1
-            )
-            feature2 = self.encoder2_proj(self.encoder2(image2)).reshape(
-                B, self.obs_horizon, -1
-            )
+            # feature1 = self.encoder1_proj(self.encoder1(image1)).reshape(
+            #     B, self.obs_horizon, -1
+            # )
+            # feature2 = self.encoder2_proj(self.encoder2(image2)).reshape(
+            #     B, self.obs_horizon, -1
+            # )
             # print(nrobot_state.shape)
             # print(feature1.shape)
             # print(part_poses.shape)
             # time.sleep(10000)
             # Combine the robot_state and image features, (B, obs_horizon, obs_dim)
-            nobs = torch.cat([nrobot_state, feature1, feature2], dim=-1)
+            # nobs = torch.cat([nrobot_state, feature1, feature2], dim=-1)
+            nobs = torch.cat([nrobot_state, part_poses, part_poses_top], dim=-1)
             # Combine the parts poses, (B, obs_horizon, obs_dim)
-            nobs = torch.cat([nobs, part_poses], dim=-1)
+            # nobs = torch.cat([nobs, part_poses], dim=-1)
+            # nobs = torch.cat([nobs, part_poses_top], dim=-1)
             nobs = nobs.flatten(start_dim=1) if flatten else nobs
 
         elif self.observation_type == "feature":

@@ -62,20 +62,7 @@ franka_from_origin_mat = get_mat(
     [franka_pose[0], franka_pose[1], franka_pose[2]],
     [0, 0, 0],
 )
-
-cam_pos = np.array([0.90, -0.00, 0.65])
-cam_target = np.array([-1, -0.00, 0.3])
-z_camera = (cam_target - cam_pos) / np.linalg.norm(cam_target - cam_pos)
-up_axis = np.array([0, 0, 1])  # Assuming Z is the up axis
-x_camera = np.cross(up_axis, z_camera)
-x_camera /= np.linalg.norm(x_camera)
-y_camera = np.cross(z_camera, x_camera)
-R_camera_sim = np.vstack([x_camera, y_camera, z_camera]).T
-T_camera_sim = np.eye(4)
-T_camera_sim[:3, :3] = R_camera_sim
-T_camera_sim[:3, 3] = cam_pos
-
-
+save_flag = True
 def sim_to_april_mat():
     return torch.tensor(
         np.linalg.inv(base_tag_from_robot_mat) @ np.linalg.inv(franka_from_origin_mat),
@@ -85,9 +72,22 @@ def sim_to_april_mat():
 def sim_coord_to_april_coord(sim_coord_mat):
     return sim_to_april_mat() @ sim_coord_mat
 
-def cam_coord_to_april_coord(pose_est_cam):
-    pose_est_cam = pose_est_cam * np.array([-1, -1, 1, 1]).reshape(4, -1)
+def cam_coord_to_april_coord(pose_est_cam, cam_pos, cam_target, revise=False):
+    cam_pos = np.array(cam_pos)
+    cam_target = np.array(cam_target)
+    z_camera = (cam_target - cam_pos) / np.linalg.norm(cam_target - cam_pos)
+    up_axis = np.array([0, 0, 1])  # Assuming Z is the up axis
+    x_camera = -np.cross(up_axis, z_camera)
+    x_camera /= np.linalg.norm(x_camera)
+    y_camera = np.cross(z_camera, x_camera)
+    R_camera_sim = np.vstack([x_camera, y_camera, z_camera]).T
+    T_camera_sim = np.eye(4)
+    T_camera_sim[:3, :3] = R_camera_sim
+    T_camera_sim[:3, 3] = cam_pos
     pos_est_sim = T_camera_sim @ pose_est_cam
+    if revise:
+        r_y = np.array([[0, 0, -1], [0, 1, 0], [1, 0, 0]])
+        pos_est_sim[:3, :3] = pos_est_sim[:3, :3] @ r_y
     pose_est_april_coord = np.concatenate(
         [
             *C.mat2pose(
@@ -99,6 +99,31 @@ def cam_coord_to_april_coord(pose_est_cam):
     )
     return pose_est_april_coord
 
+def april_to_sim_mat():
+        return franka_from_origin_mat @ base_tag_from_robot_mat
+def april_coord_to_sim_coord(april_coord_mat):
+        """Converts AprilTag coordinate to simulator base_tag coordinate."""
+        return april_to_sim_mat() @ april_coord_mat
+
+def april_coord_to_cam_coord(pose_est_april, cam_pos, cam_target):
+    cam_pos = np.array(cam_pos)
+    cam_target = np.array(cam_target)
+    z_camera = (cam_target - cam_pos) / np.linalg.norm(cam_target - cam_pos)
+    up_axis = np.array([0, 0, 1])  # Assuming Z is the up axis
+    x_camera = -np.cross(up_axis, z_camera)
+    x_camera /= np.linalg.norm(x_camera)
+    y_camera = np.cross(z_camera, x_camera)
+    R_camera_sim = np.vstack([x_camera, y_camera, z_camera]).T
+    T_camera_sim = np.eye(4)
+    T_camera_sim[:3, :3] = R_camera_sim
+    T_camera_sim[:3, 3] = cam_pos
+    pose_est_april = torch.tensor(pose_est_april, device="cpu", dtype=torch.float64)
+    pose_est_april_coord = april_coord_to_sim_coord(
+                    C.pose2mat(pose_est_april[:3], pose_est_april[-4:],  device="cpu").numpy()
+                )
+    pose_est_april_coord = np.linalg.inv(T_camera_sim) @ pose_est_april_coord
+    return pose_est_april_coord
+
 def rollout(
     env: FurnitureSimEnv,
     actor: Actor,
@@ -106,16 +131,25 @@ def rollout(
     iter: int,
     pbar: tqdm = None,
     resize_video: bool = True,
-    est:FoundationPose = None,
-    reader:YcbineoatReader = None,
+    ests:FoundationPose = None,
+    readers:YcbineoatReader = None,
+    to_origins = None,
+    bboxs = None,
     debug = 0,
     debug_dir = None,
-    mesh = None,
-    to_origin = None,
-    bbox = None
+    num_poses=1
 ):
+    # os.system(f'rm -rf {debug_dir}/rollouts_vis/* {debug_dir}/rollouts_ob/* && mkdir -p {debug_dir}/rollouts_vis {debug_dir}/rollouts_ob')
+    os.makedirs(f'{debug_dir}/rollouts_vis/leg/rgb', exist_ok=True)
+    # os.makedirs(f'{debug_dir}/rollouts_vis/leg/depth', exist_ok=True)
+    # os.makedirs(f'{debug_dir}/rollouts_vis/top/rgb', exist_ok=True)
+    # os.makedirs(f'{debug_dir}/rollouts_vis/top/depth', exist_ok=True)
+    # os.makedirs(f'{debug_dir}/rollouts_ob/leg', exist_ok=True)
+    # os.makedirs(f'{debug_dir}/rollouts_ob/top', exist_ok=True)
+    global save_flag
+    camera_idx = ["2", "4"]
     # get first observation
-    with suppress_all_output(True):
+    with suppress_all_output(False):
         obs = env.reset()
 
     actor.action_refresh()
@@ -129,55 +163,56 @@ def rollout(
     video_obs = obs.copy()
 
     step_idx = 0
-    # if debug >= 0:
-    #     pil_color_image2 = to_pil_image(obs["color_image2"].squeeze(0).permute(2, 0, 1))
-    #     pil_color_image2.save(f"{debug_dir}/rollouts_vis/{iter:019d}_begin_raw.png")
-    if reader is not None:
-        with suppress_all_output(True):
-            color_img = obs["color_image2"].squeeze(0).cpu().numpy()
-            color = reader.get_color(color_img)
-            depth_img = obs["depth_image2"].squeeze(0).cpu().numpy() * 1000
-            depth_img = depth_img.astype(np.uint16)
-            depth_img = 65535 - depth_img
-            depth = reader.get_depth(depth_img)
-            if step_idx == 0:
-                mask = reader.get_mask(0).astype(bool)
-                pose_begin = est.register(K=reader.K, rgb=color, depth=depth, ob_mask=mask, iteration=5)
-                if debug>=4:
-                    m = mesh.copy()
-                    m.apply_transform(pose)
-                    m.export(f'{debug_dir}/model_tf.obj')
-                    xyz_map = depth2xyzmap(depth, reader.K)
-                    valid = depth>=0.001
-                    pcd = toOpen3dCloud(xyz_map[valid], color[valid])
-                    o3d.io.write_point_cloud(f'{debug_dir}/scene_complete.ply', pcd)
-            else:
-                pose = est.track_one(rgb=color, depth=depth, K=reader.K, iteration=2)
 
-            center_pose = pose_begin@np.linalg.inv(to_origin)
-            vis_begin = draw_posed_3d_box(reader.K, img=color, ob_in_cam=center_pose, bbox=bbox)
-            vis_begin = draw_xyz_axis(color, ob_in_cam=center_pose, scale=0.1, K=reader.K, thickness=3, transparency=0, is_input_rgb=True)
-            # cv2.imwrite(f'{debug_dir}/rollouts_vis/{iter:019d}_begin.png', vis_begin)
-            # np.savetxt(f'{debug_dir}/rollouts_ob/{iter:019d}_begin.txt', pose_begin.reshape(4,4))
-            # os.makedirs(f'{debug_dir}/ob_in_cam', exist_ok=True)
-            # np.savetxt(f'{debug_dir}/ob_in_cam/{step_idx:4d}.txt', pose.reshape(4,4))
-            if debug>=2:
-                center_pose = pose@np.linalg.inv(to_origin)
-                vis = draw_posed_3d_box(reader.K, img=color, ob_in_cam=center_pose, bbox=bbox)
-                vis = draw_xyz_axis(color, ob_in_cam=center_pose, scale=0.1, K=reader.K, thickness=3, transparency=0, is_input_rgb=True)
-                # cv2.imshow('1', vis[...,::-1])
-                # cv2.waitKey(1)
-            if debug>=3:
-                os.makedirs(f'{debug_dir}/track_vis', exist_ok=True)
-                cv2.imwrite(f'{debug_dir}/track_vis/{step_idx:019d}.png', vis)
+    if readers is not None:
+        with suppress_all_output(True):
+            colors = [readers[i].get_color(obs[f"color_image{camera_idx[i]}"].squeeze(0).cpu().numpy()) for i in range(num_poses)]
+            depths = [readers[i].get_depth(65535-(obs[f"depth_image{camera_idx[i]}"].squeeze(0).cpu().numpy() * 1000).astype(np.uint16)) for i in range(num_poses)]
+            masks = [readers[i].get_mask(0).astype(bool) for i in range(num_poses)]
+            poses_begin = [ests[i].register(K=readers[i].K, rgb=colors[i], depth=depths[i], ob_mask=masks[i], iteration=5) for i in range(num_poses)]
+
+            # color_img = obs["color_image2"].squeeze(0).cpu().numpy()
+            # color = reader.get_color(color_img)
+            # depth_img = obs["depth_image2"].squeeze(0).cpu().numpy() * 1000
+            # depth_img = depth_img.astype(np.uint16)
+            # depth_img = 65535 - depth_img
+            # depth = reader.get_depth(depth_img)
+            # color_img2 = obs["color_image4"].squeeze(0).cpu().numpy()
+            # color2 = reader2.get_color(color_img2)
+            # depth_img2 = obs["depth_image4"].squeeze(0).cpu().numpy() * 1000
+            # depth_img2 = depth_img2.astype(np.uint16)
+            # depth_img2 = 65535 - depth_img2
+            # depth2 = reader2.get_depth(depth_img2)
+            # mask = reader.get_mask(0).astype(bool)
+            # mask2 = reader2.get_mask(0).astype(bool)
+            # pose_begin = est.register(K=reader.K, rgb=color, depth=depth, ob_mask=mask, iteration=5)
+            # pose_begin2 = est2.register(K=reader2.K, rgb=color2, depth=depth2, ob_mask=mask2, iteration=5)
+
+            if debug >= 1:
+                center_poses = [poses_begin[i]@np.linalg.inv(to_origins[i]) for i in range(num_poses)]
+                vis_begins = [draw_posed_3d_box(readers[i].K, img=colors[i], ob_in_cam=center_poses[i], bbox=bboxs[i]) for i in range(num_poses)]
+                # center_pose = pose_begin@np.linalg.inv(to_origin)
+                # center_pose2 = pose_begin2@np.linalg.inv(to_origin2)
+                # vis_begin = draw_posed_3d_box(reader.K, img=color, ob_in_cam=center_pose, bbox=bbox)
+                # vis_begin = draw_xyz_axis(color, ob_in_cam=center_pose, scale=0.1, K=reader.K, thickness=3, transparency=0, is_input_rgb=True)
+                cv2.imwrite(f'{debug_dir}/rollouts_vis/leg/rgb/{iter:019d}_begin.png', vis_begins[0])
+                # vis_begin2 = draw_posed_3d_box(reader2.K, img=color2, ob_in_cam=center_pose2, bbox=bbox2)
+                # vis_begin2 = draw_xyz_axis(color2, ob_in_cam=center_pose2, scale=0.1, K=reader2.K, thickness=3, transparency=0, is_input_rgb=True)
+                cv2.imwrite(f'{debug_dir}/rollouts_vis/top/rgb/{iter:019d}_begin.png', vis_begins[1])
+    
+    # cv2.imwrite(f'{debug_dir}/rollouts_vis/leg/{iter:019d}_begin.png', obs["color_image2"].squeeze(0).cpu().numpy())
     # Resize the images in the observation
     obs["color_image1"] = resize(obs["color_image1"])
     obs["color_image2"] = resize_crop(obs["color_image2"])
 
     obs_horizon = actor.obs_horizon
-    if reader is not None:
-        pose_begin_april_coord = cam_coord_to_april_coord(pose_begin)
+    if readers is not None:
+        pose_begin_april_coord = cam_coord_to_april_coord(poses_begin[0], [0.90, -0.00, 0.65], [-1, -0.00, 0.3])
         obs["parts_poses"][:, -7:] = torch.tensor(pose_begin_april_coord, device=env.device)
+        pose_begin_april_coord = cam_coord_to_april_coord(poses_begin[1], [0.3, -0.65, 0.8], [0.3, 0.8, 0.00], revise=True)
+        print(f"6dpe: {pose_begin_april_coord}")
+        print(f"apriltag: {obs['parts_poses'][:, :7]}")
+        obs["parts_poses"][:, :7] = torch.tensor(pose_begin_april_coord, device=env.device)
 
     obs_deque = collections.deque(
         [obs] * obs_horizon,
@@ -193,83 +228,96 @@ def rollout(
     imgs2 = [video_obs["color_image2"].cpu()]
     depths = [video_obs["depth_image2"].cpu()]
     parts_poses = [video_obs["parts_poses"].cpu()]
-    if reader is not None:
-        six_dof_poses = [torch.from_numpy(pose_begin).cpu()]
     actions = list()
     rewards = list()
     done = torch.zeros((env.num_envs, 1), dtype=torch.bool, device="cuda")
 
     while not done.all():
         # Get the next actions from the actor
-        # print(f'obs_deque shape: {obs_deque[0]["robot_state"].shape}')
         action_pred = actor.action(obs_deque)
 
         obs, reward, done, _ = env.step(action_pred)
+        # color_img = obs["color_image2"].squeeze(0).cpu().numpy()
+        # cv2.imwrite(f'{debug_dir}/rollouts_vis/leg/rgb/{step_idx:019d}.png', color_img)
+        # color_img = obs["color_image4"].squeeze(0).cpu().numpy()
+        # cv2.imwrite(f'{debug_dir}/rollouts_vis/top/rgb/{step_idx:019d}.png', color_img)
+        # depth_img = obs["depth_image2"].squeeze(0).cpu().numpy() * 1000
+        # depth_img = depth_img.astype(np.uint16)
+        # depth_img = 65535 - depth_img
+        # cv2.imwrite(f'{debug_dir}/rollouts_vis/leg/depth/{step_idx:019d}.png', depth_img)
+        # depth_img = obs["depth_image4"].squeeze(0).cpu().numpy() * 1000
+        # depth_img = depth_img.astype(np.uint16)
+        # depth_img = 65535 - depth_img
+        # cv2.imwrite(f'{debug_dir}/rollouts_vis/top/depth/{step_idx:019d}.png', depth_img)
 
         video_obs = obs.copy()
 
-        if reader is not None:
+        if readers is not None:
             with suppress_all_output(True):
-                color_img = obs["color_image2"].squeeze(0).cpu().numpy()
-                color = reader.get_color(color_img)
-                depth_img = obs["depth_image2"].squeeze(0).cpu().numpy() * 1000
-                depth_img = depth_img.astype(np.uint16)
-                depth_img = 65535 - depth_img
-                depth = reader.get_depth(depth_img)
-                depth_img = Image.fromarray(depth_img, mode="I;16")
-                depth_img.save(f"/home2/zxp/Projects/FoundationPose/demo_data/square_table_leg/depth/{step_idx:019d}.png")
-                if step_idx == 0:
-                    mask = reader.get_mask(0).astype(bool)
-                    pose = est.register(K=reader.K, rgb=color, depth=depth, ob_mask=mask, iteration=5)
-                    if debug>=4:
-                        m = mesh.copy()
-                        m.apply_transform(pose)
-                        m.export(f'{debug_dir}/model_tf.obj')
-                        xyz_map = depth2xyzmap(depth, reader.K)
-                        valid = depth>=0.001
-                        pcd = toOpen3dCloud(xyz_map[valid], color[valid])
-                        o3d.io.write_point_cloud(f'{debug_dir}/scene_complete.ply', pcd)
-                else:
-                    pose = est.track_one(rgb=color, depth=depth, K=reader.K, iteration=2)
+                # color_img = obs["color_image2"].squeeze(0).cpu().numpy()
+                # color = reader.get_color(color_img)
+                # depth_img = obs["depth_image2"].squeeze(0).cpu().numpy() * 1000
+                # depth_img = depth_img.astype(np.uint16)
+                # depth_img = 65535 - depth_img
+                # depth = reader.get_depth(depth_img)
+                # color_img2 = obs["color_image4"].squeeze(0).cpu().numpy()
+                # color2 = reader.get_color(color_img2)
+                # depth_img2 = obs["depth_image4"].squeeze(0).cpu().numpy() * 1000
+                # depth_img2 = depth_img2.astype(np.uint16)
+                # depth_img2 = 65535 - depth_img2
+                # depth2 = reader.get_depth(depth_img2)
+                
+                # pose = est.track_one(rgb=color, depth=depth, K=reader.K, iteration=2)
+                # pose2 = est2.track_one(rgb=color2, depth=depth2, K=reader2.K, iteration=2)
+
+                colors = [readers[i].get_color(obs[f"color_image{camera_idx[i]}"].squeeze(0).cpu().numpy()) for i in range(num_poses)]
+                depths = [readers[i].get_depth(65535-(obs[f"depth_image{camera_idx[i]}"].squeeze(0).cpu().numpy() * 1000).astype(np.uint16)) for i in range(num_poses)]
+                masks = [readers[i].get_mask(0).astype(bool) for i in range(num_poses)]
+                poses = [ests[i].track_one(rgb=colors[i], depth=depths[i], K=readers[i].K, iteration=2) for i in range(num_poses)]
                 
                 # os.makedirs(f'{debug_dir}/ob_in_cam', exist_ok=True)
-                # np.savetxt(f'{debug_dir}/ob_in_cam/{step_idx:4d}.txt', pose.reshape(4,4))
+                # np.savetxt(f'{debug_dir}/rollouts_ob/leg/{step_idx:4d}.txt', pose.reshape(4,4))
+                # np.savetxt(f'{debug_dir}/rollouts_ob/top/{step_idx:4d}.txt', pose2.reshape(4,4))
+                if save_flag:
+                    center_poses = [poses[i]@np.linalg.inv(to_origins[i]) for i in range(num_poses)]
+                    vis = [draw_posed_3d_box(readers[i].K, img=colors[i], ob_in_cam=center_poses[i], bbox=bboxs[i]) for i in range(num_poses)]
+                    # center_pose = pose@np.linalg.inv(to_origin)
+                    # center_pose2 = pose2@np.linalg.inv(to_origin2)
+                    # vis = draw_posed_3d_box(reader.K, img=color, ob_in_cam=center_pose, bbox=bbox)
+                    # vis2 = draw_posed_3d_box(reader2.K, img=color2, ob_in_cam=center_pose2, bbox=bbox2)
+                    imageio.imwrite(f'{debug_dir}/track_vis/leg/{step_idx:019d}.png', vis[0])
+                    imageio.imwrite(f'{debug_dir}/track_vis/top/{step_idx:019d}.png', vis[1])
                 if debug>=2:
-                    center_pose = pose@np.linalg.inv(to_origin)
-                    vis = draw_posed_3d_box(reader.K, img=color, ob_in_cam=center_pose, bbox=bbox)
-                    vis = draw_xyz_axis(color, ob_in_cam=center_pose, scale=0.1, K=reader.K, thickness=3, transparency=0, is_input_rgb=True)
-                    cv2.imshow('1', vis[...,::-1])
-                    cv2.waitKey(1)
+                    center_poses = [poses[i]@np.linalg.inv(to_origins[i]) for i in range(num_poses)]
+                    vis = [draw_posed_3d_box(readers[i].K, img=colors[i], ob_in_cam=center_poses[i], bbox=bboxs[i]) for i in range(num_poses)]
+                    # center_pose = pose@np.linalg.inv(to_origin)
+                    # center_pose2 = pose2@np.linalg.inv(to_origin2)
+                    # vis = draw_posed_3d_box(reader.K, img=color, ob_in_cam=center_pose, bbox=bbox)
+                    # vis = draw_xyz_axis(color, ob_in_cam=center_pose, scale=0.1, K=reader.K, thickness=3, transparency=0, is_input_rgb=True)
+                    # vis2 = draw_posed_3d_box(reader2.K, img=color2, ob_in_cam=center_pose2, bbox=bbox2)
+                    # vis = draw_xyz_axis(color, ob_in_cam=center_pose, scale=0.1, K=reader.K, thickness=3, transparency=0, is_input_rgb=True)
+                    # vis = draw_xyz_axis(color2, ob_in_cam=center_pose2, scale=0.1, K=reader2.K, thickness=3, transparency=0, is_input_rgb=True)
+                    # cv2.imshow('1', vis[...,::-1])
+                    # cv2.waitKey(1)
                 if debug>=3:
                     os.makedirs(f'{debug_dir}/track_vis', exist_ok=True)
-                    imageio.imwrite(f'{debug_dir}/track_vis/{step_idx:019d}.png', vis)
-        
+                    imageio.imwrite(f'{debug_dir}/track_vis/leg/{step_idx:019d}.png', vis[0])
+                    os.makedirs(f'{debug_dir}/track_vis', exist_ok=True)
+                    imageio.imwrite(f'{debug_dir}/track_vis/top/{step_idx:019d}.png', vis[1])
+        if save_flag:
+            cv2.imwrite(f'{debug_dir}/rollouts_vis/leg/rgb/{step_idx:019d}.png', obs["color_image2"].squeeze(0).cpu().numpy())
+        image_end = obs["color_image2"].squeeze(0).cpu().numpy()
         if resize_video:
             video_obs["color_image1"] = resize(video_obs["color_image1"])
             video_obs["color_image2"] = resize_crop(video_obs["color_image2"])
-        # pil_color_image1 = to_pil_image(obs["color_image1"].squeeze(0).permute(2, 0, 1))
-        # pil_color_image2 = to_pil_image(obs["color_image2"].squeeze(0).permute(2, 0, 1))
-        # pil_color_image2.save(f"/home2/zxp/Projects/FoundationPose/demo_data/square_table_leg/rgb/{step_idx:019d}.png")
-        # print(obs["robot_state"].shape)
-        # for key, value in obs["robot_state"].items():
-        #     print(f"{key}: Shape = {value.shape}")
-        # time.sleep(50)
-        # Resize the images in the observation
-        color_image2_raw = obs["color_image2"]
         obs["color_image1"] = resize(obs["color_image1"])
         obs["color_image2"] = resize_crop(obs["color_image2"])
-        # pil_color_image1_resize = to_pil_image(obs["color_image1"].squeeze(0).permute(2, 0, 1))
-        # pil_color_image2_resize = to_pil_image(obs["color_image2"].squeeze(0).permute(2, 0, 1))
-        # pil_depth_image2 = obs["depth_image2"].squeeze(0).cpu().numpy()
-        # pil_depth_image2_up = pil_depth_image2 * 1000
-        # pil_depth_image2_up = pil_depth_image2_up.astype(np.uint16)
-        # inverted_depth_image = 65535 - pil_depth_image2_up
-        # inverted_depth_image = Image.fromarray(inverted_depth_image, mode="I;16")
-        # inverted_depth_image.save(f"/home2/zxp/Projects/FoundationPose/demo_data/square_table_leg/depth/{step_idx:019d}.png")
         # Save observations for the policy
-        if reader is not None:
-            pose_april_coord = cam_coord_to_april_coord(pose)
+        if readers is not None:
+            pose_april_coord = cam_coord_to_april_coord(poses[0], [0.90, -0.00, 0.65], [-1, -0.00, 0.3])
             obs["parts_poses"][:, -7:] = torch.tensor(pose_april_coord, device=env.device)
+            pose_april_coord = cam_coord_to_april_coord(poses[1], [0.3, -0.65, 0.8], [0.3, 0.8, 0.00], revise=True)
+            obs["parts_poses"][:, :7] = torch.tensor(pose_april_coord, device=env.device)
         obs_deque.append(obs)
 
         # Store the results for visualization and logging
@@ -280,8 +328,6 @@ def rollout(
         actions.append(action_pred.cpu())
         rewards.append(reward.cpu())
         parts_poses.append(video_obs["parts_poses"].cpu())
-        if reader is not None:
-            six_dof_poses.append(torch.from_numpy(pose).cpu())
 
         # update progress bar
         step_idx += 1
@@ -293,17 +339,23 @@ def rollout(
             done = torch.ones((env.num_envs, 1), dtype=torch.bool, device="cuda")
 
         if done.all():
-            if reader is not None:
-                center_pose = pose@np.linalg.inv(to_origin)
-                pose_end_april_coord = cam_coord_to_april_coord(pose)
-                vis_end = draw_posed_3d_box(reader.K, img=color, ob_in_cam=center_pose, bbox=bbox)
-                vis_end = draw_xyz_axis(color, ob_in_cam=center_pose, scale=0.1, K=reader.K, thickness=3, transparency=0, is_input_rgb=True)
-                cv2.imwrite(f'{debug_dir}/rollouts_vis/{iter:019d}_end.png', vis_end)
-                np.savetxt(f'{debug_dir}/rollouts_ob/{iter:019d}_end.txt', pose_end_april_coord)
-            pil_color_image2 = to_pil_image(color_image2_raw.squeeze(0).permute(2, 0, 1))
-            pil_color_image2.save(f"{debug_dir}/rollouts_vis/{iter:019d}_end_raw.png")
+            save_flag = False
+            cv2.imwrite(f'{debug_dir}/rollouts_vis/leg/{iter:019d}_end.png', image_end)
+            if readers is not None:
+                center_poses = [poses[i]@np.linalg.inv(to_origins[i]) for i in range(num_poses)]
+                vis_ends = [draw_posed_3d_box(readers[i].K, img=colors[i], ob_in_cam=center_poses[i], bbox=bboxs[i]) for i in range(num_poses)]
+                # center_pose = pose@np.linalg.inv(to_origin)
+                # center_pose2 = pose2@np.linalg.inv(to_origin2)
+                # pose_end_april_coord = cam_coord_to_april_coord(pose, [0.90, -0.00, 0.65], [-1, -0.00, 0.3])
+                # vis_end = draw_posed_3d_box(reader.K, img=color, ob_in_cam=center_pose, bbox=bbox)
+                # vis_end = draw_xyz_axis(color, ob_in_cam=center_pose, scale=0.1, K=reader.K, thickness=3, transparency=0, is_input_rgb=True)
+                # vis_end2 = draw_posed_3d_box(reader.K, img=color2, ob_in_cam=center_pose2, bbox=bbox2)
+                # vis_end2 = draw_xyz_axis(color2, ob_in_cam=center_pose2, scale=0.1, K=reader.K, thickness=3, transparency=0, is_input_rgb=True)
+                cv2.imwrite(f'{debug_dir}/rollouts_vis/leg/rgb/{iter:019d}_end.png', vis_ends[0])
+                cv2.imwrite(f'{debug_dir}/rollouts_vis/top/rgb/{iter:019d}_end.png', vis_ends[1])
+            #     # np.savetxt(f'{debug_dir}/rollouts_ob/{iter:019d}_end.txt', pose_end_april_coord)
             break
-    if reader is not None:
+    if readers is not None:
         return (
             torch.stack(robot_states, dim=1),
             torch.stack(imgs1, dim=1),
@@ -312,11 +364,6 @@ def rollout(
             # Using cat here removes the singleton dimension
             torch.cat(rewards, dim=1),
             torch.stack(parts_poses, dim=1),
-            torch.stack(six_dof_poses, dim=0),
-            vis_begin,
-            vis_end,
-            pose_begin_april_coord,
-            pose_end_april_coord
         )
     else:
         return (
@@ -344,6 +391,7 @@ def calculate_success_rate(
     compress_pickles: bool = False,
     resize_video: bool = True,
     pose_estimation: bool = False, # Whether to use pose estimation
+    num_poses: int = 1, # Number of objects to estimate
 ) -> RolloutStats:
     def pbar_desc(self: tqdm, i: int, n_success: int):
         rnd = i + 1
@@ -371,30 +419,57 @@ def calculate_success_rate(
     os.system(f'rm -rf {debug_dir}/rollouts_vis/* {debug_dir}/rollouts_ob/* && mkdir -p {debug_dir}/rollouts_vis {debug_dir}/rollouts_ob')
     if pose_estimation:
         print("Pose estimation is enabled!!!")
-        # time_now = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        # code_dir = "/home2/zxp/Projects/Juicer_ws/imitation-juicer"
-        mesh_file = f'{code_dir}/foundationpose/demo_data/square_table_leg/mesh/square_table_leg4.obj'
-        test_scene_dir = f'{code_dir}/foundationpose/demo_data/square_table_leg'
-        # debug_dir = f'{code_dir}/foundationpose/debug/{time_now}'
         debug = 1
         set_logging_format()
-        # set_seed(0)
-        mesh = trimesh.load(mesh_file, force='mesh')
-        # if debug>=2:
-        #     os.system(f'rm -rf {debug_dir}/* && mkdir -p {debug_dir}/track_vis {debug_dir}/ob_in_cam')
-        # os.system(f'rm -rf {debug_dir}/rollouts_vis/* {debug_dir}/rollouts_ob/* && mkdir -p {debug_dir}/rollouts_vis {debug_dir}/rollouts_ob')
+        set_seed(0)
+        os.system(f'mkdir -p {debug_dir}/track_vis/leg {debug_dir}/track_vis/top')
         if debug>=2:
             os.system(f'mkdir -p {debug_dir}/track_vis {debug_dir}/ob_in_cam')
         if debug >= 1:
             os.system(f'mkdir -p {debug_dir}/rollouts_vis {debug_dir}/rollouts_ob')
-        to_origin, extents = trimesh.bounds.oriented_bounds(mesh)
-        bbox = np.stack([-extents/2, extents/2], axis=0).reshape(2,3)
+        
+        mesh_files = []
+        test_scene_dirs = []
+        mesh_files.append(f'{code_dir}/foundationpose/demo_data/square_table_leg/mesh/square_table_leg4.obj')
+        mesh_files.append(f'{code_dir}/foundationpose/demo_data/square_table/mesh/square_table.obj')
+        test_scene_dirs.append(f'{code_dir}/foundationpose/demo_data/square_table_leg')
+        test_scene_dirs.append(f'{code_dir}/foundationpose/demo_data/square_table')
+        # mesh_file = f'{code_dir}/foundationpose/demo_data/square_table_leg/mesh/square_table_leg4.obj'
+        # test_scene_dir = f'{code_dir}/foundationpose/demo_data/square_table_leg'
+        # mesh_file2 = f'{code_dir}/foundationpose/demo_data/square_table/mesh/square_table.obj'
+        # test_scene_dir2 = f'{code_dir}/foundationpose/demo_data/square_table'
         scorer = ScorePredictor()
         refiner = PoseRefinePredictor()
         glctx = dr.RasterizeCudaContext()
-        est = FoundationPose(model_pts=mesh.vertices, model_normals=mesh.vertex_normals, mesh=mesh, scorer=scorer, refiner=refiner, debug_dir=debug_dir, debug=debug, glctx=glctx)
-        logging.info("estimator initialization done")
-        reader = YcbineoatReader(video_dir=test_scene_dir, shorter_side=None, zfar=np.inf)
+        meshs = []
+        to_origins = []
+        extents = []
+        bboxs = []
+        ests = []
+        readers = []
+        for i in range(num_poses):
+            meshs.append(trimesh.load(mesh_files[i], force='mesh'))
+            to_origin, extent = trimesh.bounds.oriented_bounds(meshs[i])
+            to_origins.append(to_origin)
+            extents.append(extent)
+            bboxs.append(np.stack([-extent/2, extent/2], axis=0).reshape(2,3))
+            ests.append(FoundationPose(model_pts=meshs[i].vertices, model_normals=meshs[i].vertex_normals, mesh=meshs[i], scorer=scorer, refiner=refiner, debug_dir=debug_dir, debug=debug, glctx=glctx))
+            readers.append(YcbineoatReader(video_dir=test_scene_dirs[i], shorter_side=None, zfar=np.inf))
+        
+        # mesh = trimesh.load(mesh_file, force='mesh')
+        # mesh2 = trimesh.load(mesh_file2, force='mesh')
+        # to_origin, extents = trimesh.bounds.oriented_bounds(mesh)
+        # to_origin2, extents2 = trimesh.bounds.oriented_bounds(mesh2)
+        # bbox = np.stack([-extents/2, extents/2], axis=0).reshape(2,3)
+        # bbox2 = np.stack([-extents2/2, extents2/2], axis=0).reshape(2,3)
+        # scorer = ScorePredictor()
+        # refiner = PoseRefinePredictor()
+        # glctx = dr.RasterizeCudaContext()
+        # est = FoundationPose(model_pts=mesh.vertices, model_normals=mesh.vertex_normals, mesh=mesh, scorer=scorer, refiner=refiner, debug_dir=debug_dir, debug=debug, glctx=glctx)
+        # est2 = FoundationPose(model_pts=mesh2.vertices, model_normals=mesh2.vertex_normals, mesh=mesh2, scorer=scorer, refiner=refiner, debug_dir=debug_dir, debug=debug, glctx=glctx)
+        # logging.info("estimator initialization done")
+        # reader = YcbineoatReader(video_dir=test_scene_dir, shorter_side=None, zfar=np.inf)
+        # reader2 = YcbineoatReader(video_dir=test_scene_dir2, shorter_side=None, zfar=np.inf)
 
     if n_parts_assemble is None:
         n_parts_assemble = len(env.furniture.should_be_assembled)
@@ -419,27 +494,26 @@ def calculate_success_rate(
     all_actions = list()
     all_rewards = list()
     all_parts_poses = list()
-    all_6dof_poses = list()
     all_success = list()
 
     pbar.pbar_desc(0, n_success)
     for i in range(n_rollouts // env.num_envs):
         # Perform a rollout with the current model
         if pose_estimation:
-            robot_states, imgs1, imgs2, actions, rewards, parts_poses, six_dof_poses, vis_begin, vis_end, pose_begin, pose_end = rollout(
+            robot_states, imgs1, imgs2, actions, rewards, parts_poses = rollout(
                 env,
                 actor,
                 rollout_max_steps,
                 iter=i,
                 pbar=pbar,
                 resize_video=resize_video,
-                est=est,
-                reader=reader,
+                ests=ests,
+                readers=readers,
+                to_origins=to_origins,
+                bboxs=bboxs,
                 debug=debug,
                 debug_dir=debug_dir,
-                mesh=mesh,
-                to_origin=to_origin,
-                bbox=bbox
+                num_poses=num_poses
             )
         else:
             robot_states, imgs1, imgs2, actions, rewards, parts_poses = rollout(
@@ -449,24 +523,19 @@ def calculate_success_rate(
                 iter=i,
                 pbar=pbar,
                 resize_video=resize_video,
-                est=est,
-                reader=reader,
                 debug=debug,
                 debug_dir=debug_dir,
-                mesh=mesh,
-                to_origin=to_origin,
-                bbox=bbox
             )
 
         # Calculate the success rate
         success = rewards.sum(dim=1) == n_parts_assemble
-        if debug == 1:
-            cv2.imwrite(f'{debug_dir}/rollouts_vis/{i:019d}_begin.png', vis_begin)
-            np.savetxt(f'{debug_dir}/rollouts_ob/{i:019d}_begin.txt', pose_begin)
-            cv2.imwrite(f'{debug_dir}/rollouts_vis/{i:019d}_end.png', vis_end)
-            np.savetxt(f'{debug_dir}/rollouts_ob/{i:019d}_end.txt', pose_end)
-            np.savetxt(f"{debug_dir}/leg_poses.txt", parts_poses.squeeze(0)[:, -7:].numpy())
-            np.savetxt(f"{debug_dir}/parts_poses.txt", parts_poses.squeeze(0).numpy())
+        # if debug == 1:
+        #     cv2.imwrite(f'{debug_dir}/rollouts_vis/{i:019d}_begin.png', vis_begin)
+        #     np.savetxt(f'{debug_dir}/rollouts_ob/{i:019d}_begin.txt', pose_begin)
+        #     cv2.imwrite(f'{debug_dir}/rollouts_vis/{i:019d}_end.png', vis_end)
+        #     np.savetxt(f'{debug_dir}/rollouts_ob/{i:019d}_end.txt', pose_end)
+        #     np.savetxt(f"{debug_dir}/leg_poses.txt", parts_poses.squeeze(0)[:, -7:].numpy())
+        #     np.savetxt(f"{debug_dir}/parts_poses.txt", parts_poses.squeeze(0).numpy())
 
         n_success += success.sum().item()
 
@@ -493,7 +562,6 @@ def calculate_success_rate(
         actions = all_actions[rollout_idx].numpy()
         rewards = all_rewards[rollout_idx].numpy()
         parts_poses = all_parts_poses[rollout_idx].numpy()
-        # six_dof_poses = all_6dof_poses[rollout_idx].numpy()
         success = all_success[rollout_idx].item()
         furniture = env.furniture_name
 
@@ -528,7 +596,6 @@ def calculate_success_rate(
                 imgs1=video1[: n_steps + 1],
                 imgs2=video2[: n_steps + 1],
                 parts_poses=parts_poses[: n_steps + 1],
-                six_dof_poses=six_dof_poses[: n_steps + 1],
                 actions=actions[:n_steps],
                 rewards=rewards[:n_steps],
                 success=success,

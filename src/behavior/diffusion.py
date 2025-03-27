@@ -100,7 +100,8 @@ class DiffusionPolicy(Actor):
             self.encoder2_proj = nn.Identity()
 
         self.flatten_obs = config.actor.diffusion_model.get("flatten_obs", True)
-        self.timestep_obs_dim = config.robot_state_dim + 2 * self.encoding_dim + self.parts_poses_dim
+        # self.timestep_obs_dim = config.robot_state_dim + 2 * self.encoding_dim + self.parts_poses_dim # 加入位姿估计
+        self.timestep_obs_dim = config.robot_state_dim + self.parts_poses_dim # 去掉视觉编码
         # self.timestep_obs_dim = config.robot_state_dim + 2 * self.encoding_dim
         self.obs_dim = (
             self.timestep_obs_dim * self.obs_horizon

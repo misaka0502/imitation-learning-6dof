@@ -200,7 +200,7 @@ def main(config: DictConfig):
         id=config.wandb.continue_run_id,
         name=config.wandb.name,
         resume=config.wandb.continue_run_id is not None,
-        project="one_leg_pos_0117_nopose",
+        project="one_leg_pos_0315_novisualenc",
         entity="yumio-harbin-institute-of-technology-shenzhen",
         config=config_dict,
         mode=config.wandb.mode,

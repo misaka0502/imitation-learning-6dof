@@ -43,7 +43,7 @@ from furniture_bench.envs.observation import (
 )
 from furniture_bench.robot.robot_state import ROBOT_STATE_DIMS
 from furniture_bench.furniture.parts.part import Part
-
+import time
 
 ASSET_ROOT = str(Path(__file__).parent.parent.absolute() / "assets")
 
@@ -116,6 +116,7 @@ class FurnitureSimEnv(gym.Env):
         for furn in self.furnitures:
             furn.max_env_steps = max_env_steps
 
+
         self.furniture_name = furniture
         self.num_envs = num_envs
         self.obs_keys = obs_keys or DEFAULT_VISUAL_OBS
@@ -167,6 +168,7 @@ class FurnitureSimEnv(gym.Env):
         self.set_viewer()
         self.set_camera()
         self.acquire_base_tensors()
+
 
         self.isaac_gym.prepare_sim(self.sim)
         self.refresh()
@@ -385,7 +387,6 @@ class FurnitureSimEnv(gym.Env):
                 franka_dof_props["driveMode"][:7].fill(gymapi.DOF_MODE_POS)
                 franka_dof_props["stiffness"][:7].fill(1000.0)
                 franka_dof_props["damping"][:7].fill(200.0)
-
             # Grippers
             franka_dof_props["driveMode"][7:].fill(gymapi.DOF_MODE_EFFORT)
             franka_dof_props["stiffness"][7:].fill(0)
@@ -571,7 +572,17 @@ class FurnitureSimEnv(gym.Env):
             elif name == "front":
                 camera = self.isaac_gym.create_camera_sensor(env, camera_cfg)
                 cam_pos = gymapi.Vec3(0.90, -0.00, 0.65)
+                # cam_pos = gymapi.Vec3(0.90, -0.00, 0.80)
                 cam_target = gymapi.Vec3(-1, -0.00, 0.3)
+                self.isaac_gym.set_camera_location(camera, env, cam_pos, cam_target)
+                self.front_cam_pos = np.array([cam_pos.x, cam_pos.y, cam_pos.z])
+                self.front_cam_target = np.array(
+                    [cam_target.x, cam_target.y, cam_target.z]
+                )
+            elif name == "top":
+                camera = self.isaac_gym.create_camera_sensor(env, camera_cfg)
+                cam_pos = gymapi.Vec3(0.3, -0.65, 0.8)
+                cam_target = gymapi.Vec3(0.3, 0.8, 0.00)
                 self.isaac_gym.set_camera_location(camera, env, cam_pos, cam_target)
                 self.front_cam_pos = np.array([cam_pos.x, cam_pos.y, cam_pos.z])
                 self.front_cam_target = np.array(
@@ -589,7 +600,7 @@ class FurnitureSimEnv(gym.Env):
                 self.isaac_gym.set_camera_transform(camera, env, transform)
             return camera
 
-        camera_names = {"1": "wrist", "2": "front", "3": "rear"}
+        camera_names = {"1": "wrist", "2": "front", "3": "rear", "4": "top"}
         for env_idx, env in enumerate(self.envs):
             for k in self.obs_keys:
                 if k.startswith("color"):
@@ -613,6 +624,7 @@ class FurnitureSimEnv(gym.Env):
                         self.sim, env, handle, render_type
                     )
                 )
+
                 if k not in self.camera_obs:
                     self.camera_obs[k] = []
                 self.camera_obs[k].append(tensor)
@@ -733,7 +745,7 @@ class FurnitureSimEnv(gym.Env):
             elif k.startswith("depth"):
                 obs_dict[k] = gym.spaces.Box(0, 255, img_size)
             elif k == "parts_poses":
-                obs_dict[k] = gym.spaces.Box(low, high, (parts_poses,))
+                obs_dict[k] = gym.spaces.Box(low, high, parts_poses)
             else:
                 raise ValueError(f"FurnitureSim does not support observation ({k}).")
 
@@ -1293,21 +1305,46 @@ class FurnitureSimEnv(gym.Env):
             for env_idx in range(self.num_envs)
         ]
 
+    # def reset(self):
+    #     # can also reset the full set of robots/parts, without applying torques and refreshing
+    #     # self._reset_franka_all()
+    #     # self._reset_parts_all()
+    #     for i in range(self.num_envs):
+    #         # if using ._reset_*_all(), can set reset_franka=False and reset_parts=False in .reset_env
+    #         self.reset_env(i)
+
+    #         if self.ctrl_mode == "osc":
+    #             # apply zero torque across the board and refresh in between each env reset (not needed if using ._reset_*_all())
+    #             torque_action = torch.zeros_like(self.dof_pos)
+    #             self.isaac_gym.set_dof_actuation_force_tensor(
+    #                 self.sim, gymtorch.unwrap_tensor(torque_action)
+    #             )
+    #         self.refresh()
+
+    #     self.furniture.reset()
+
+    #     self.refresh()
+    #     self.assemble_idx = 0
+
+    #     if self.save_camera_input:
+    #         self._save_camera_input()
+
+    #     return self._get_observation()
     def reset(self):
         # can also reset the full set of robots/parts, without applying torques and refreshing
-        self._reset_franka_all()
-        self._reset_parts_all()
-        # for i in range(self.num_envs):
+        # self._reset_franka_all()
+        # self._reset_parts_all()
+        for i in range(self.num_envs):
             # if using ._reset_*_all(), can set reset_franka=False and reset_parts=False in .reset_env
-            # self.reset_env(i)
+            self.reset_env(i)
 
-            # if self.ctrl_mode == "osc":
-            #     # apply zero torque across the board and refresh in between each env reset (not needed if using ._reset_*_all())
-            #     torque_action = torch.zeros_like(self.dof_pos)
-            #     self.isaac_gym.set_dof_actuation_force_tensor(
-            #         self.sim, gymtorch.unwrap_tensor(torque_action)
-            #     )
-            # self.refresh()
+            if self.ctrl_mode == "osc":
+                # apply zero torque across the board and refresh in between each env reset (not needed if using ._reset_*_all())
+                torque_action = torch.zeros_like(self.dof_pos)
+                self.isaac_gym.set_dof_actuation_force_tensor(
+                    self.sim, gymtorch.unwrap_tensor(torque_action)
+                )
+            self.refresh()
 
         self.env_steps[:] = 0
         self.furniture.reset()
@@ -1329,7 +1366,7 @@ class FurnitureSimEnv(gym.Env):
         for i in range(self.num_envs):
             self.reset_env_to(i, state[i])
 
-    def reset_env(self, env_idx: int, reset_franka=True, reset_parts=True):
+    def reset_env(self, env_idx, reset_franka=True, reset_parts=True):
         """Resets the environment. **MUST refresh in between multiple calls
         to this function to have changes properly reflected in each environment.
         Also might want to set a zero-torque action via .set_dof_actuation_force_tensor
@@ -1342,12 +1379,8 @@ class FurnitureSimEnv(gym.Env):
         """
         self.furnitures[env_idx].reset()
         if self.randomness == Randomness.LOW and not self.init_assembled:
-            # self.furnitures[env_idx].randomize_init_pose(
-            #     self.from_skill, pos_range=[-0.015, 0.015], rot_range=15
-            # )
-            # 随机性调整
             self.furnitures[env_idx].randomize_init_pose(
-                self.from_skill, pos_range=[-0.0, 0.0], rot_range=0
+                self.from_skill, pos_range=[-0.015, 0.015], rot_range=15
             )
 
         if self.randomness == Randomness.MEDIUM:
@@ -1719,4 +1752,4 @@ class FurnitureSimStateEnv(FurnitureSimEnv):
 
     def __init__(self, **kwargs):
         obs_keys = DEFAULT_STATE_OBS
-        super().__init__(obs_keys=obs_keys, concat_robot_state=False, **kwargs)
+        super().__init__(obs_keys=obs_keys, concat_robot_state=True, **kwargs)

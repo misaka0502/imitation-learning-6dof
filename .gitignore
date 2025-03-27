@@ -122,3 +122,5 @@ models/
 furniture-bench/furniture_bench_backup/
 
 *.egg-info/
+
+*.bak

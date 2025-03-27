@@ -181,6 +181,7 @@ if __name__ == "__main__":
     parser.add_argument("--no-april-tags", action="store_true")
     parser.add_argument("--record", action="store_true")
     parser.add_argument("--pose", action="store_true")
+    parser.add_argument("--num_poses", type=int, default=1)
     # Parse the arguments
     args = parser.parse_args()
 
@@ -389,7 +390,8 @@ if __name__ == "__main__":
                     n_parts_assemble=args.n_parts_assemble,
                     compress_pickles=args.compress_pickles,
                     resize_video=not args.store_full_resolution_video,
-                    pose_estimation=args.pose
+                    pose_estimation=args.pose,
+                    num_poses=args.num_poses
                 )
 
                 if args.store_video_wandb:

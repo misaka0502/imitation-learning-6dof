@@ -38,7 +38,7 @@ def get_env(
             concat_robot_state=True,  # If true, robot state is concatenated to the observation.
             headless=headless,  # If true, simulation runs without GUI.
             # Includes the parts poses in the observation for resetting
-            obs_keys=DEFAULT_VISUAL_OBS + ["parts_poses"] + ["depth_image2"],
+            obs_keys=DEFAULT_VISUAL_OBS + ["parts_poses"] + ["depth_image2"] + ["color_image4"] + ["depth_image4"],
             # obs_keys=FULL_OBS,
             compute_device_id=gpu_id,
             graphics_device_id=gpu_id,

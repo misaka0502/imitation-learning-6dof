@@ -24,6 +24,60 @@ from src.common.context import suppress_all_output
 from PIL import Image
 from torchvision.transforms.functional import to_pil_image
 import time
+import torch
+import numpy as np
+import collections
+from furniture_bench.config import config
+from furniture_bench.utils.pose import get_mat
+import furniture_bench.controllers.control_utils as C
+import time
+
+ROBOT_HEIGHT = 0.015
+table_pos = np.array([0.8, 0.8, 0.4])
+table_half_width = 0.015
+table_surface_z = table_pos[2] + table_half_width
+franka_pose = np.array(
+    [0.5 * -table_pos[0] + 0.1, 0, table_surface_z + ROBOT_HEIGHT]
+)
+base_tag_from_robot_mat = config["robot"]["tag_base_from_robot_base"]
+franka_from_origin_mat = get_mat(
+    [franka_pose[0], franka_pose[1], franka_pose[2]],
+    [0, 0, 0],
+)
+
+def sim_to_april_mat():
+    return torch.tensor(
+        np.linalg.inv(base_tag_from_robot_mat) @ np.linalg.inv(franka_from_origin_mat),
+        device="cpu", dtype=torch.float64
+    )
+
+def sim_coord_to_april_coord(sim_coord_mat):
+    return sim_to_april_mat() @ sim_coord_mat
+
+def cam_coord_to_april_coord(pose_est_cam, cam_pos, cam_target):
+    cam_pos = np.array(cam_pos)
+    cam_target = np.array(cam_target)
+    z_camera = (cam_target - cam_pos) / np.linalg.norm(cam_target - cam_pos)
+    up_axis = np.array([0, 0, 1])  # Assuming Z is the up axis
+    x_camera = np.cross(up_axis, z_camera)
+    x_camera /= np.linalg.norm(x_camera)
+    y_camera = np.cross(z_camera, x_camera)
+    R_camera_sim = np.vstack([x_camera, y_camera, z_camera]).T
+    T_camera_sim = np.eye(4)
+    T_camera_sim[:3, :3] = R_camera_sim
+    T_camera_sim[:3, 3] = cam_pos
+    pose_est_cam = pose_est_cam * np.array([-1, -1, 1, 1]).reshape(4, -1)
+    pos_est_sim = T_camera_sim @ pose_est_cam
+    pose_est_april_coord = np.concatenate(
+        [
+            *C.mat2pose(
+                sim_coord_to_april_coord(
+                    torch.tensor(pos_est_sim, device="cpu", dtype=torch.float64)
+                )
+            )
+        ]
+    )
+    return pose_est_april_coord
 
 def main():
     parser = argparse.ArgumentParser()
@@ -114,7 +168,7 @@ def main():
         furniture=args.furniture,
         num_envs=args.num_envs,
         resize_img=not args.high_res,
-        obs_keys=DEFAULT_VISUAL_OBS + ["parts_poses"] + ["depth_image2"],
+        obs_keys=DEFAULT_VISUAL_OBS + ["parts_poses"] + ["depth_image2"] + ["color_image4"] + ["depth_image4"],
         init_assembled=args.init_assembled,
         record=args.record,
         headless=args.headless,
@@ -150,31 +204,32 @@ def main():
         print("Pose estimation is enabled!!!")
         time_now = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         code_dir = "/home2/zxp/Projects/Juicer_ws/imitation-juicer"
+        # mesh_file = f'{code_dir}/foundationpose/demo_data/square_table/mesh/square_table.obj'
         mesh_file = f'{code_dir}/foundationpose/demo_data/square_table_leg/mesh/square_table_leg4.obj'
-        mesh_file2 = f'{code_dir}/foundationpose/demo_data/square_table/mesh/square_table.obj'
+        # test_scene_dir = f'{code_dir}/foundationpose/demo_data/square_table'
         test_scene_dir = f'{code_dir}/foundationpose/demo_data/square_table_leg'
-        test_scene_dir2 = f'{code_dir}/foundationpose/demo_data/square_table'
         debug_dir = f'{code_dir}/foundationpose/debug/run_sim_env/{time_now}'
-        debug = 1
+        debug = 0
         set_logging_format()
         set_seed(0)
         mesh = trimesh.load(mesh_file, force='mesh')
-        mesh2 = trimesh.load(mesh_file2, force='mesh')
+        # mesh2 = trimesh.load(mesh_file2, force='mesh')
         if debug>=2:
             os.system(f'mkdir -p {debug_dir}/track_vis {debug_dir}/ob_in_cam')
-        os.system(f'mkdir -p {debug_dir}/rollouts_vis {debug_dir}/rollouts_ob')
+        if debug >= 1:
+            os.system(f'mkdir -p {debug_dir}/rollouts_vis {debug_dir}/rollouts_ob')
         to_origin, extents = trimesh.bounds.oriented_bounds(mesh)
-        to_origin2, extents2 = trimesh.bounds.oriented_bounds(mesh2)
+        # to_origin2, extents2 = trimesh.bounds.oriented_bounds(mesh2)
         bbox = np.stack([-extents/2, extents/2], axis=0).reshape(2,3)
-        bbox2 = np.stack([-extents2/2, extents2/2], axis=0).reshape(2,3)
+        # bbox2 = np.stack([-extents2/2, extents2/2], axis=0).reshape(2,3)
         scorer = ScorePredictor()
         refiner = PoseRefinePredictor()
         glctx = dr.RasterizeCudaContext()
         est = FoundationPose(model_pts=mesh.vertices, model_normals=mesh.vertex_normals, mesh=mesh, scorer=scorer, refiner=refiner, debug_dir=debug_dir, debug=debug, glctx=glctx)
-        est2 = FoundationPose(model_pts=mesh2.vertices, model_normals=mesh2.vertex_normals, mesh=mesh2, scorer=scorer, refiner=refiner, debug_dir=debug_dir, debug=debug, glctx=glctx)
+        # est2 = FoundationPose(model_pts=mesh2.vertices, model_normals=mesh2.vertex_normals, mesh=mesh2, scorer=scorer, refiner=refiner, debug_dir=debug_dir, debug=debug, glctx=glctx)
         logging.info("estimator initialization done")
         reader = YcbineoatReader(video_dir=test_scene_dir, shorter_side=None, zfar=np.inf)
-        reader2 = YcbineoatReader(video_dir=test_scene_dir2, shorter_side=None, zfar=np.inf)
+        # reader2 = YcbineoatReader(video_dir=test_scene_dir2, shorter_side=None, zfar=np.inf)
         step_idx = 0
         with suppress_all_output(True):
             color_img = ob["color_image2"].squeeze(0).cpu().numpy()
@@ -185,38 +240,38 @@ def main():
             depth = reader.get_depth(depth_img)
             mask = reader.get_mask(0).astype(bool)
             pose = est.register(K=reader.K, rgb=color, depth=depth, ob_mask=mask, iteration=5)
-            mask2 = reader2.get_mask(0).astype(bool)
-            pose2 = est2.register(K=reader2.K, rgb=color, depth=depth, ob_mask=mask2, iteration=5)
-            if debug>=3:
-                m = mesh.copy()
-                m.apply_transform(pose)
-                m.export(f'{debug_dir}/model_tf.obj')
-                xyz_map = depth2xyzmap(depth, reader.K)
-                valid = depth>=0.001
-                pcd = toOpen3dCloud(xyz_map[valid], color[valid])
-                o3d.io.write_point_cloud(f'{debug_dir}/scene_complete.ply', pcd)
+            # mask2 = reader2.get_mask(1).astype(bool)
+            # pose2 = est2.register(K=reader2.K, rgb=color, depth=depth, ob_mask=mask2, iteration=5)
+            # if debug>=3:
+            #     m = mesh.copy()
+            #     m.apply_transform(pose)
+            #     m.export(f'{debug_dir}/model_tf.obj')
+            #     xyz_map = depth2xyzmap(depth, reader.K)
+            #     valid = depth>=0.001
+            #     pcd = toOpen3dCloud(xyz_map[valid], color[valid])
+            #     o3d.io.write_point_cloud(f'{debug_dir}/scene_complete.ply', pcd)
             
             center_pose = pose@np.linalg.inv(to_origin)
-            center_pose2 = pose2@np.linalg.inv(to_origin2)
+            # center_pose2 = pose2@np.linalg.inv(to_origin2)
             if debug>=1:
                 # os.makedirs(f'{debug_dir}/ob_in_cam', exist_ok=True)
                 # os.makedirs(f'{debug_dir}/ob_in_cam_apriltag_sim', exist_ok=True)
                 vis = draw_posed_3d_box(reader.K, img=color, ob_in_cam=center_pose, bbox=bbox)
                 vis = draw_xyz_axis(color, ob_in_cam=center_pose, scale=0.1, K=reader.K, thickness=3, transparency=0, is_input_rgb=True)
-                vis = draw_posed_3d_box(reader2.K, img=vis, ob_in_cam=center_pose2, bbox=bbox2)
-                vis = draw_xyz_axis(vis, ob_in_cam=center_pose2, scale=0.1, K=reader2.K, thickness=3, transparency=0, is_input_rgb=True)
+                # vis = draw_posed_3d_box(reader2.K, img=color, ob_in_cam=center_pose2, bbox=bbox2)
+                # vis = draw_xyz_axis(vis, ob_in_cam=center_pose2, scale=0.1, K=reader2.K, thickness=3, transparency=0, is_input_rgb=True)
                 # np.savetxt(f"{debug_dir}/begin_parts_poses_leg.txt", ob["parts_poses"][:,-7:].cpu().numpy())
                 # pil_color_image2 = to_pil_image(ob["color_image2"].squeeze(0).permute(2, 0, 1))
                 # pil_color_image2.save(f"{debug_dir}/rollouts_vis/begin_raw.png")
-                # cv2.imwrite(f'{debug_dir}/rollouts_vis/begin.png', vis)
+                # cv2.imwrite(f'{debug_dir}/rollouts_vis/begin_raw.png', color_img)
                 # np.savetxt(f'{debug_dir}/rollouts_ob/begin_pose.txt', pose.reshape(4,4))
                 cv2.imshow('1', vis[...,::-1])
                 cv2.waitKey(1)
             if debug>=2:
                 os.makedirs(f'{debug_dir}/track_vis', exist_ok=True)
                 cv2.imwrite(f'{debug_dir}/track_vis/{step_idx:019d}.png', vis)
-            six_dof_poses = [torch.from_numpy(pose).cpu()]
-            parts_poses = [ob["parts_poses"].cpu()]
+            # six_dof_poses = [torch.from_numpy(pose).cpu()]
+            # parts_poses = [ob["parts_poses"].cpu()]
 
     def action_tensor(ac):
         if isinstance(ac, (list, np.ndarray)):
@@ -278,14 +333,14 @@ def main():
                     depth_img = 65535 - depth_img
                     depth = reader.get_depth(depth_img)
                     pose = est.track_one(rgb=color, depth=depth, K=reader.K, iteration=2)
-                    pose2 = est2.track_one(rgb=color, depth=depth, K=reader2.K, iteration=2)
+                    # pose2 = est2.track_one(rgb=color, depth=depth, K=reader2.K, iteration=2)
                     if debug>=1:
                         center_pose = pose@np.linalg.inv(to_origin)
-                        center_pose2 = pose2@np.linalg.inv(to_origin2)
+                        # center_pose2 = pose2@np.linalg.inv(to_origin2)
                         vis = draw_posed_3d_box(reader.K, img=color, ob_in_cam=center_pose, bbox=bbox)
                         vis = draw_xyz_axis(color, ob_in_cam=center_pose, scale=0.1, K=reader.K, thickness=3, transparency=0, is_input_rgb=True)
-                        vis = draw_posed_3d_box(reader2.K, img=vis, ob_in_cam=center_pose2, bbox=bbox2)
-                        vis = draw_xyz_axis(vis, ob_in_cam=center_pose2, scale=0.1, K=reader2.K, thickness=3, transparency=0, is_input_rgb=True)
+                        # vis = draw_posed_3d_box(reader2.K, img=color, ob_in_cam=center_pose2, bbox=bbox2)
+                        # vis = draw_xyz_axis(vis, ob_in_cam=center_pose2, scale=0.1, K=reader2.K, thickness=3, transparency=0, is_input_rgb=True)
                         # np.savetxt(f'{debug_dir}/ob_in_cam/{step_idx}.txt', pose.reshape(4,4))
                         # np.savetxt(f'{debug_dir}/ob_in_cam_apriltag_sim/{step_idx}.txt', ob["parts_poses"][:, -7:].cpu().numpy())
                         cv2.imshow('1', vis[...,::-1])
@@ -293,14 +348,20 @@ def main():
                     if debug>=2:
                         os.makedirs(f'{debug_dir}/track_vis', exist_ok=True)
                         imageio.imwrite(f'{debug_dir}/track_vis/{step_idx:019d}.png', vis)
-                    six_dof_poses.append(torch.from_numpy(pose).cpu())
-                    parts_poses.append(ob["parts_poses"].cpu())
+                    # six_dof_poses.append(torch.from_numpy(pose).cpu())
+                    # parts_poses.append(ob["parts_poses"].cpu())
+            # color_img = ob["color_image4"].squeeze(0).cpu().numpy()
+            # cv2.imshow('1', color_img)
+            # os.makedirs(f'{debug_dir}/rollouts_vis', exist_ok=True)
+            # cv2.imwrite(f'{debug_dir}/rollouts_vis/{step_idx:019d}.png', color_img)
+            # cv2.waitKey(1)
+            # time.sleep(10000)
             # if step_idx == 1000:
             #     break
         if args.pose:
             cv2.imwrite(f'{debug_dir}/rollouts_vis/end.png', vis)
-            np.savetxt(f'{debug_dir}/rollouts_ob/end_pose.txt', pose.reshape(4,4))
-            np.savetxt(f"{debug_dir}/parts_poses_leg.txt", parts_poses[:, -7:].numpy())
+            # np.savetxt(f'{debug_dir}/rollouts_ob/end_pose.txt', pose.reshape(4,4))
+            # np.savetxt(f"{debug_dir}/parts_poses_leg.txt", parts_poses[:, -7:].numpy())
             print("done!!!")
             # print(ob.keys())
             # print(ob["color_image2"].squeeze(0).cpu().numpy().shape)
