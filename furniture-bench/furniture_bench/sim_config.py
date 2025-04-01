@@ -45,8 +45,8 @@ sim_config["parts"] = {"friction": 0.15}
 sim_config["table"] = {"friction": 0.10}
 sim_config["asset"] = {}
 
-sim_params.physx.max_gpu_contact_pairs = 6553600
-sim_params.physx.default_buffer_size_multiplier = 8.0
+# sim_params.physx.max_gpu_contact_pairs = 6553600
+# sim_params.physx.default_buffer_size_multiplier = 8.0
 # Parameters for the robot.
 sim_config["robot"].update(
     {

@@ -136,7 +136,7 @@ class Actor(torch.nn.Module, metaclass=PostInitCaller):
         # parts_poses: torch.Tensor = torch.cat([o["parts_poses"].unsqueeze(1) for o in obs], dim=1)
         # Reshape concatenate the features
         # nobs = torch.cat([nrobot_state, feature1, feature2, parts_poses], dim=-1)
-        nobs = torch.cat([nrobot_state, parts_poses, parts_poses_top], dim=-1)
+        nobs = torch.cat([nrobot_state, parts_poses_top, parts_poses], dim=-1)
         # nobs = torch.cat([nrobot_state, feature1, feature2, parts_poses, parts_poses_top], dim=-1)
         # nobs = torch.cat([nrobot_state, feature1, feature2], dim=-1)
 
@@ -223,7 +223,7 @@ class Actor(torch.nn.Module, metaclass=PostInitCaller):
             # time.sleep(10000)
             # Combine the robot_state and image features, (B, obs_horizon, obs_dim)
             # nobs = torch.cat([nrobot_state, feature1, feature2], dim=-1)
-            nobs = torch.cat([nrobot_state, part_poses, part_poses_top], dim=-1)
+            nobs = torch.cat([nrobot_state, part_poses_top, part_poses], dim=-1)
             # Combine the parts poses, (B, obs_horizon, obs_dim)
             # nobs = torch.cat([nobs, part_poses], dim=-1)
             # nobs = torch.cat([nobs, part_poses_top], dim=-1)

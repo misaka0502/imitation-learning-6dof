@@ -30,8 +30,7 @@ def get_env(
             Path(__file__).parent.parent.absolute() / "assets"
         )
     with suppress_all_output(not verbose):
-        env = gym.make(
-            "FurnitureSim-v0",
+        env = FurnitureSimEnv(
             furniture=furniture,  # Specifies the type of furniture [lamp | square_table | desk | drawer | cabinet | round_table | stool | chair | one_leg].
             num_envs=num_envs,  # Number of parallel environments.
             resize_img=resize_img,  # If true, images are resized to 224 x 224.

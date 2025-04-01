@@ -624,7 +624,11 @@ class FurnitureSimEnv(gym.Env):
                         self.sim, env, handle, render_type
                     )
                 )
-
+                # tensor = torch.tensor(
+                #     self.isaac_gym.get_camera_image(
+                #         self.sim, env, handle, render_type
+                #     )
+                # )
                 if k not in self.camera_obs:
                     self.camera_obs[k] = []
                 self.camera_obs[k].append(tensor)
