@@ -1184,7 +1184,12 @@ class FurnitureSimEnv(gym.Env):
             camera_name = camera_names[obs_key[-1]]
             image = self.isaac_gym.get_camera_image(self.sim, self.envs[i], self.camera_handles[camera_name][i], gymapi.IMAGE_COLOR)
             image = np.reshape(image, (self.img_size[1], self.img_size[0], -1))[..., :-1]
+            image = torch.from_numpy(image).to(self.device)
             color_obs.append(image)
+        color_obs = torch.stack(color_obs)
+        # camera_name = camera_names[obs_key[-1]]
+        # color_obs = self.isaac_gym.get_camera_image(self.sim, self.envs[0], self.camera_handles[camera_name][0], gymapi.IMAGE_COLOR)
+        # color_obs = np.reshape(color_obs, (self.img_size[1], self.img_size[0], -1))[..., :-1]
         return color_obs
 
     def _get_depth_obs_my_implement(self, obs_key):
@@ -1193,9 +1198,11 @@ class FurnitureSimEnv(gym.Env):
         for i in range(self.num_envs):
             camera_name = camera_names[obs_key[-1]]
             depth_image = self.isaac_gym.get_camera_image(self.sim, self.envs[i], self.camera_handles[camera_name][i], gymapi.IMAGE_DEPTH)
-            # depth_image = cv2.normalize(depth_image, None, 0, 1, cv2.NORM_MINMAX)
-            # depth_image = (depth_image * 255).astype(np.uint8)
+            depth_image = torch.from_numpy(depth_image).to(self.device)
             depth_obs.append(depth_image)
+        depth_obs = torch.stack(depth_obs)
+        # camera_name = camera_names[obs_key[-1]]
+        # depth_obs = self.isaac_gym.get_camera_image(self.sim, self.envs[0], self.camera_handles[camera_name][0], gymapi.IMAGE_DEPTH)
         return depth_obs
 
     def get_front_projection_view_matrix(self):

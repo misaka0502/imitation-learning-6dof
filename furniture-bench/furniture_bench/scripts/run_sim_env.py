@@ -246,9 +246,9 @@ def main():
         # reader2 = YcbineoatReader(video_dir=test_scene_dir2, shorter_side=None, zfar=np.inf)
         step_idx = 0
         with suppress_all_output(True):
-            color_img = ob["color_image2"][0]
+            color_img = ob["color_image2"].squeeze(0).cpu().numpy()
             color = reader.get_color(color_img)
-            depth_img = ob["depth_image2"][0] * 1000
+            depth_img = ob["depth_image2"].squeeze(0).cpu().numpy() * 1000
             depth_img = depth_img.astype(np.uint16)
             depth_img = 65535 - depth_img
             depth = reader.get_depth(depth_img)
@@ -341,9 +341,9 @@ def main():
             if args.pose:
                 step_idx += 1
                 with suppress_all_output(True):
-                    color_img = ob["color_image2"][0]
+                    color_img = ob["color_image2"].squeeze(0).cpu().numpy()
                     color = reader.get_color(color_img)
-                    depth_img = ob["depth_image2"][0] * 1000
+                    depth_img = ob["depth_image2"].squeeze(0).cpu().numpy() * 1000
                     depth_img = depth_img.astype(np.uint16)
                     depth_img = 65535 - depth_img
                     depth = reader.get_depth(depth_img)
