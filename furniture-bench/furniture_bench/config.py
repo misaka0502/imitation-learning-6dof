@@ -54,7 +54,7 @@ config: Dict[str, Any] = {
         "motion_stopped_counter_threshold": 50,  # Number of steps to wait when the robot stopped moving before declaring the episode done.
     },
     "camera": {
-        "num_camera": 3,
+        "num_camera": 4,
         1: {
             "serial": CAM_WRIST_SERIAL,
             "rel_pose_from_base": get_mat(

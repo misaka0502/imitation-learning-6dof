@@ -166,8 +166,8 @@ def rollout(
 
     if readers is not None:
         with suppress_all_output(True):
-            colors = [readers[i].get_color(obs[f"color_image{camera_idx[i]}"].squeeze(0).cpu().numpy()) for i in range(num_poses)]
-            depths = [readers[i].get_depth(65535-(obs[f"depth_image{camera_idx[i]}"].squeeze(0).cpu().numpy() * 1000).astype(np.uint16)) for i in range(num_poses)]
+            colors = [readers[i].get_color(obs[f"color_image{camera_idx[i]}"][0]) for i in range(num_poses)]
+            depths = [readers[i].get_depth(65535-(obs[f"depth_image{camera_idx[i]}"][0] * 1000).astype(np.uint16)) for i in range(num_poses)]
             masks = [readers[i].get_mask(0).astype(bool) for i in range(num_poses)]
             poses_begin = [ests[i].register(K=readers[i].K, rgb=colors[i], depth=depths[i], ob_mask=masks[i], iteration=5) for i in range(num_poses)]
 
@@ -185,8 +185,8 @@ def rollout(
     
     # cv2.imwrite(f'{debug_dir}/rollouts_vis/leg/{iter:019d}_begin.png', obs["color_image2"].squeeze(0).cpu().numpy())
     # Resize the images in the observation
-    obs["color_image1"] = resize(obs["color_image1"])
-    obs["color_image2"] = resize_crop(obs["color_image2"])
+    obs["color_image1"][0] = resize(obs["color_image1"][0])
+    obs["color_image2"][0] = resize_crop(obs["color_image2"][0])
 
     obs_horizon = actor.obs_horizon
     if readers is not None:
@@ -202,14 +202,14 @@ def rollout(
         maxlen=obs_horizon,
     )
     if resize_video:
-        video_obs["color_image1"] = resize(video_obs["color_image1"])
-        video_obs["color_image2"] = resize_crop(video_obs["color_image2"])
+        video_obs["color_image1"][0] = resize(video_obs["color_image1"][0])
+        video_obs["color_image2"][0] = resize_crop(video_obs["color_image2"][0])
 
     # save visualization and rewards
     robot_states = [video_obs["robot_state"].cpu()]
-    imgs1 = [video_obs["color_image1"].cpu()]
-    imgs2 = [video_obs["color_image2"].cpu()]
-    depths = [video_obs["depth_image2"].cpu()]
+    imgs1 = [video_obs["color_image1"][0].cpu()]
+    imgs2 = [video_obs["color_image2"][0].cpu()]
+    depths = [video_obs["depth_image2"][0].cpu()]
     parts_poses = [video_obs["parts_poses"].cpu()]
     actions = list()
     rewards = list()
@@ -225,8 +225,8 @@ def rollout(
 
         if readers is not None:
             with suppress_all_output(True):
-                colors = [readers[i].get_color(obs[f"color_image{camera_idx[i]}"].squeeze(0).cpu().numpy()) for i in range(num_poses)]
-                depths = [readers[i].get_depth(65535-(obs[f"depth_image{camera_idx[i]}"].squeeze(0).cpu().numpy() * 1000).astype(np.uint16)) for i in range(num_poses)]
+                colors = [readers[i].get_color(obs[f"color_image{camera_idx[i]}"][0]) for i in range(num_poses)]
+                depths = [readers[i].get_depth(65535-(obs[f"depth_image{camera_idx[i]}"][0] * 1000).astype(np.uint16)) for i in range(num_poses)]
                 masks = [readers[i].get_mask(0).astype(bool) for i in range(num_poses)]
                 poses = [ests[i].track_one(rgb=colors[i], depth=depths[i], K=readers[i].K, iteration=2) for i in range(num_poses)]
 
@@ -253,13 +253,13 @@ def rollout(
                     os.makedirs(f'{debug_dir}/track_vis', exist_ok=True)
                     imageio.imwrite(f'{debug_dir}/track_vis/top/{step_idx:019d}.png', vis[1])
         if save_flag:
-            cv2.imwrite(f'{debug_dir}/rollouts_vis/leg/rgb/{step_idx:019d}.png', obs["color_image2"].squeeze(0).cpu().numpy())
-        image_end = obs["color_image2"].squeeze(0).cpu().numpy()
+            cv2.imwrite(f'{debug_dir}/rollouts_vis/leg/rgb/{step_idx:019d}.png', obs["color_image2"][0])
+        image_end = obs["color_image2"][0]
         if resize_video:
-            video_obs["color_image1"] = resize(video_obs["color_image1"])
-            video_obs["color_image2"] = resize_crop(video_obs["color_image2"])
-        obs["color_image1"] = resize(obs["color_image1"])
-        obs["color_image2"] = resize_crop(obs["color_image2"])
+            video_obs["color_image1"][0] = resize(video_obs["color_image1"][0])
+            video_obs["color_image2"][0] = resize_crop(video_obs["color_image2"][0])
+        obs["color_image1"][0] = resize(obs["color_image1"][0])
+        obs["color_image2"][0] = resize_crop(obs["color_image2"][0])
         # Save observations for the policy
         if readers is not None:
             pose_april_coord = cam_coord_to_april_coord(poses[0], [0.90, -0.00, 0.65], [-1, -0.00, 0.3])
@@ -270,9 +270,9 @@ def rollout(
 
         # Store the results for visualization and logging
         robot_states.append(video_obs["robot_state"].cpu())
-        imgs1.append(video_obs["color_image1"].cpu())
-        imgs2.append(video_obs["color_image2"].cpu())
-        depths.append(video_obs["depth_image2"].cpu())
+        imgs1.append(video_obs["color_image1"][0])
+        imgs2.append(video_obs["color_image2"][0])
+        depths.append(video_obs["depth_image2"][0])
         actions.append(action_pred.cpu())
         rewards.append(reward.cpu())
         parts_poses.append(video_obs["parts_poses"].cpu())

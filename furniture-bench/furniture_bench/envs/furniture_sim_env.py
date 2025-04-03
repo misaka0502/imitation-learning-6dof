@@ -545,11 +545,12 @@ class FurnitureSimEnv(gym.Env):
     def set_camera(self):
         self.camera_handles = {}
         self.camera_obs = {}
+        self.enable_camera_tensors = False
 
         def create_camera(name, i):
             env = self.envs[i]
             camera_cfg = gymapi.CameraProperties()
-            camera_cfg.enable_tensors = True
+            camera_cfg.enable_tensors = self.enable_camera_tensors
             camera_cfg.width = self.img_size[0]
             camera_cfg.height = self.img_size[1]
             camera_cfg.near_plane = 0.001
@@ -619,19 +620,15 @@ class FurnitureSimEnv(gym.Env):
                         create_camera(camera_name, env_idx)
                     )
                 handle = self.camera_handles[camera_name][env_idx]
-                tensor = gymtorch.wrap_tensor(
-                    self.isaac_gym.get_camera_image_gpu_tensor(
-                        self.sim, env, handle, render_type
+                if self.enable_camera_tensors:
+                    tensor = gymtorch.wrap_tensor(
+                        self.isaac_gym.get_camera_image_gpu_tensor(
+                            self.sim, env, handle, render_type
+                        )
                     )
-                )
-                # tensor = torch.tensor(
-                #     self.isaac_gym.get_camera_image(
-                #         self.sim, env, handle, render_type
-                #     )
-                # )
-                if k not in self.camera_obs:
-                    self.camera_obs[k] = []
-                self.camera_obs[k].append(tensor)
+                    if k not in self.camera_obs:
+                        self.camera_obs[k] = []
+                    self.camera_obs[k].append(tensor)
 
     def import_assets(self):
         self.base_tag_asset = self._import_base_tag_asset()
@@ -1180,6 +1177,27 @@ class FurnitureSimEnv(gym.Env):
             color_obs = color_obs.permute(0, 3, 1, 2)  # NHWC -> NCHW
         return color_obs
 
+    def _get_color_obs_my_implement(self, obs_key):
+        camera_names = {"1": "wrist", "2": "front", "3": "rear", "4": "top"}
+        color_obs = []
+        for i in range(self.num_envs):
+            camera_name = camera_names[obs_key[-1]]
+            image = self.isaac_gym.get_camera_image(self.sim, self.envs[i], self.camera_handles[camera_name][i], gymapi.IMAGE_COLOR)
+            image = np.reshape(image, (self.img_size[1], self.img_size[0], -1))[..., :-1]
+            color_obs.append(image)
+        return color_obs
+
+    def _get_depth_obs_my_implement(self, obs_key):
+        camera_names = {"1": "wrist", "2": "front", "3": "rear", "4": "top"}
+        depth_obs = []
+        for i in range(self.num_envs):
+            camera_name = camera_names[obs_key[-1]]
+            depth_image = self.isaac_gym.get_camera_image(self.sim, self.envs[i], self.camera_handles[camera_name][i], gymapi.IMAGE_DEPTH)
+            # depth_image = cv2.normalize(depth_image, None, 0, 1, cv2.NORM_MINMAX)
+            # depth_image = (depth_image * 255).astype(np.uint8)
+            depth_obs.append(depth_image)
+        return depth_obs
+
     def get_front_projection_view_matrix(self):
         cam_pos = self.front_cam_pos
         cam_target = self.front_cam_target
@@ -1232,14 +1250,27 @@ class FurnitureSimEnv(gym.Env):
 
     def _get_observation(self):
         robot_state = self._read_robot_state()
-        color_obs = {
-            k: self._get_color_obs(v)
-            for k, v in self.camera_obs.items()
-            if "color" in k
-        }
-        depth_obs = {
-            k: torch.stack(v) for k, v in self.camera_obs.items() if "depth" in k
-        }
+        if self.enable_camera_tensors:
+            color_obs = {
+                k: self._get_color_obs(v)
+                for k, v in self.camera_obs.items()
+                if "color" in k
+            }
+            depth_obs = {
+                k: torch.stack(v) for k, v in self.camera_obs.items() if "depth" in k
+            }
+        else:
+            self.isaac_gym.fetch_results(self.sim, True)
+            self.isaac_gym.step_graphics(self.sim)
+            self.isaac_gym.render_all_camera_sensors(self.sim)
+            color_obs = {
+                k: self._get_color_obs_my_implement(k)
+                for k in self.obs_keys if "color" in k
+            }
+            depth_obs = {
+                k: self._get_depth_obs_my_implement(k)
+                for k in self.obs_keys if "depth" in k
+            }
 
         if self.np_step_out:
             robot_state = {k: v.cpu().numpy() for k, v in robot_state.items()}
