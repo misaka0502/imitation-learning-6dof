@@ -39,6 +39,7 @@ def get_env(
             # Includes the parts poses in the observation for resetting
             obs_keys=DEFAULT_VISUAL_OBS + ["parts_poses"] + ["depth_image2"] + ["color_image4"] + ["depth_image4"],
             # obs_keys=FULL_OBS,
+            # obs_keys=DEFAULT_VISUAL_OBS + ["parts_poses"],
             compute_device_id=gpu_id,
             graphics_device_id=gpu_id,
             init_assembled=False,  # If true, the environment is initialized with assembled furniture.

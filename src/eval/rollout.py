@@ -139,13 +139,7 @@ def rollout(
     debug_dir = None,
     num_poses=1
 ):
-    # os.system(f'rm -rf {debug_dir}/rollouts_vis/* {debug_dir}/rollouts_ob/* && mkdir -p {debug_dir}/rollouts_vis {debug_dir}/rollouts_ob')
     os.makedirs(f'{debug_dir}/rollouts_vis/leg/rgb', exist_ok=True)
-    # os.makedirs(f'{debug_dir}/rollouts_vis/leg/depth', exist_ok=True)
-    # os.makedirs(f'{debug_dir}/rollouts_vis/top/rgb', exist_ok=True)
-    # os.makedirs(f'{debug_dir}/rollouts_vis/top/depth', exist_ok=True)
-    # os.makedirs(f'{debug_dir}/rollouts_ob/leg', exist_ok=True)
-    # os.makedirs(f'{debug_dir}/rollouts_ob/top', exist_ok=True)
     global save_flag
     camera_idx = ["2", "4"]
     # get first observation
@@ -209,8 +203,11 @@ def rollout(
     robot_states = [video_obs["robot_state"].cpu()]
     imgs1 = [video_obs["color_image1"].cpu()]
     imgs2 = [video_obs["color_image2"].cpu()]
-    depths = [video_obs["depth_image2"].cpu()]
+    # depths = [video_obs["depth_image2"].cpu()]
     parts_poses = [video_obs["parts_poses"].cpu()]
+    parts_poses_est ={}
+    parts_poses_est["leg"] = [obs["parts_poses"][:, -7:].cpu()]
+    parts_poses_est["top"] = [obs["parts_poses"][:, :7].cpu()]
     actions = list()
     rewards = list()
     done = torch.zeros((env.num_envs, 1), dtype=torch.bool, device="cuda")
@@ -238,13 +235,6 @@ def rollout(
                 if debug>=2:
                     center_poses = [poses[i]@np.linalg.inv(to_origins[i]) for i in range(num_poses)]
                     vis = [draw_posed_3d_box(readers[i].K, img=colors[i], ob_in_cam=center_poses[i], bbox=bboxs[i]) for i in range(num_poses)]
-                    # center_pose = pose@np.linalg.inv(to_origin)
-                    # center_pose2 = pose2@np.linalg.inv(to_origin2)
-                    # vis = draw_posed_3d_box(reader.K, img=color, ob_in_cam=center_pose, bbox=bbox)
-                    # vis = draw_xyz_axis(color, ob_in_cam=center_pose, scale=0.1, K=reader.K, thickness=3, transparency=0, is_input_rgb=True)
-                    # vis2 = draw_posed_3d_box(reader2.K, img=color2, ob_in_cam=center_pose2, bbox=bbox2)
-                    # vis = draw_xyz_axis(color, ob_in_cam=center_pose, scale=0.1, K=reader.K, thickness=3, transparency=0, is_input_rgb=True)
-                    # vis = draw_xyz_axis(color2, ob_in_cam=center_pose2, scale=0.1, K=reader2.K, thickness=3, transparency=0, is_input_rgb=True)
                     # cv2.imshow('1', vis[...,::-1])
                     # cv2.waitKey(1)
                 if debug>=3:
@@ -272,10 +262,12 @@ def rollout(
         robot_states.append(video_obs["robot_state"].cpu())
         imgs1.append(video_obs["color_image1"].cpu())
         imgs2.append(video_obs["color_image2"].cpu())
-        depths.append(video_obs["depth_image2"].cpu())
+        # depths.append(video_obs["depth_image2"].cpu())
         actions.append(action_pred.cpu())
         rewards.append(reward.cpu())
         parts_poses.append(video_obs["parts_poses"].cpu())
+        parts_poses_est["leg"].append(obs["parts_poses"][:, -7:].cpu())
+        parts_poses_est["top"].append(obs["parts_poses"][:, :7].cpu())
 
         # update progress bar
         step_idx += 1
@@ -292,16 +284,8 @@ def rollout(
             if readers is not None:
                 center_poses = [poses[i]@np.linalg.inv(to_origins[i]) for i in range(num_poses)]
                 vis_ends = [draw_posed_3d_box(readers[i].K, img=colors[i], ob_in_cam=center_poses[i], bbox=bboxs[i]) for i in range(num_poses)]
-                # center_pose = pose@np.linalg.inv(to_origin)
-                # center_pose2 = pose2@np.linalg.inv(to_origin2)
-                # pose_end_april_coord = cam_coord_to_april_coord(pose, [0.90, -0.00, 0.65], [-1, -0.00, 0.3])
-                # vis_end = draw_posed_3d_box(reader.K, img=color, ob_in_cam=center_pose, bbox=bbox)
-                # vis_end = draw_xyz_axis(color, ob_in_cam=center_pose, scale=0.1, K=reader.K, thickness=3, transparency=0, is_input_rgb=True)
-                # vis_end2 = draw_posed_3d_box(reader.K, img=color2, ob_in_cam=center_pose2, bbox=bbox2)
-                # vis_end2 = draw_xyz_axis(color2, ob_in_cam=center_pose2, scale=0.1, K=reader.K, thickness=3, transparency=0, is_input_rgb=True)
                 cv2.imwrite(f'{debug_dir}/rollouts_vis/leg/rgb/{iter:019d}_end.png', vis_ends[0])
                 cv2.imwrite(f'{debug_dir}/rollouts_vis/top/rgb/{iter:019d}_end.png', vis_ends[1])
-            #     # np.savetxt(f'{debug_dir}/rollouts_ob/{iter:019d}_end.txt', pose_end_april_coord)
             break
     if readers is not None:
         return (
@@ -312,6 +296,7 @@ def rollout(
             # Using cat here removes the singleton dimension
             torch.cat(rewards, dim=1),
             torch.stack(parts_poses, dim=1),
+            parts_poses_est
         )
     else:
         return (
@@ -382,10 +367,6 @@ def calculate_success_rate(
         mesh_files.append(f'{code_dir}/foundationpose/demo_data/square_table/mesh/square_table.obj')
         test_scene_dirs.append(f'{code_dir}/foundationpose/demo_data/square_table_leg')
         test_scene_dirs.append(f'{code_dir}/foundationpose/demo_data/square_table')
-        # mesh_file = f'{code_dir}/foundationpose/demo_data/square_table_leg/mesh/square_table_leg4.obj'
-        # test_scene_dir = f'{code_dir}/foundationpose/demo_data/square_table_leg'
-        # mesh_file2 = f'{code_dir}/foundationpose/demo_data/square_table/mesh/square_table.obj'
-        # test_scene_dir2 = f'{code_dir}/foundationpose/demo_data/square_table'
         scorer = ScorePredictor()
         refiner = PoseRefinePredictor()
         glctx = dr.RasterizeCudaContext()
@@ -403,21 +384,6 @@ def calculate_success_rate(
             bboxs.append(np.stack([-extent/2, extent/2], axis=0).reshape(2,3))
             ests.append(FoundationPose(model_pts=meshs[i].vertices, model_normals=meshs[i].vertex_normals, mesh=meshs[i], scorer=scorer, refiner=refiner, debug_dir=debug_dir, debug=debug, glctx=glctx))
             readers.append(YcbineoatReader(video_dir=test_scene_dirs[i], shorter_side=None, zfar=np.inf))
-        
-        # mesh = trimesh.load(mesh_file, force='mesh')
-        # mesh2 = trimesh.load(mesh_file2, force='mesh')
-        # to_origin, extents = trimesh.bounds.oriented_bounds(mesh)
-        # to_origin2, extents2 = trimesh.bounds.oriented_bounds(mesh2)
-        # bbox = np.stack([-extents/2, extents/2], axis=0).reshape(2,3)
-        # bbox2 = np.stack([-extents2/2, extents2/2], axis=0).reshape(2,3)
-        # scorer = ScorePredictor()
-        # refiner = PoseRefinePredictor()
-        # glctx = dr.RasterizeCudaContext()
-        # est = FoundationPose(model_pts=mesh.vertices, model_normals=mesh.vertex_normals, mesh=mesh, scorer=scorer, refiner=refiner, debug_dir=debug_dir, debug=debug, glctx=glctx)
-        # est2 = FoundationPose(model_pts=mesh2.vertices, model_normals=mesh2.vertex_normals, mesh=mesh2, scorer=scorer, refiner=refiner, debug_dir=debug_dir, debug=debug, glctx=glctx)
-        # logging.info("estimator initialization done")
-        # reader = YcbineoatReader(video_dir=test_scene_dir, shorter_side=None, zfar=np.inf)
-        # reader2 = YcbineoatReader(video_dir=test_scene_dir2, shorter_side=None, zfar=np.inf)
 
     if n_parts_assemble is None:
         n_parts_assemble = len(env.furniture.should_be_assembled)
@@ -448,7 +414,7 @@ def calculate_success_rate(
     for i in range(n_rollouts // env.num_envs):
         # Perform a rollout with the current model
         if pose_estimation:
-            robot_states, imgs1, imgs2, actions, rewards, parts_poses = rollout(
+            robot_states, imgs1, imgs2, actions, rewards, parts_poses, parts_poses_est = rollout(
                 env,
                 actor,
                 rollout_max_steps,
@@ -477,13 +443,12 @@ def calculate_success_rate(
 
         # Calculate the success rate
         success = rewards.sum(dim=1) == n_parts_assemble
-        # if debug == 1:
-        #     cv2.imwrite(f'{debug_dir}/rollouts_vis/{i:019d}_begin.png', vis_begin)
-        #     np.savetxt(f'{debug_dir}/rollouts_ob/{i:019d}_begin.txt', pose_begin)
-        #     cv2.imwrite(f'{debug_dir}/rollouts_vis/{i:019d}_end.png', vis_end)
-        #     np.savetxt(f'{debug_dir}/rollouts_ob/{i:019d}_end.txt', pose_end)
-        #     np.savetxt(f"{debug_dir}/leg_poses.txt", parts_poses.squeeze(0)[:, -7:].numpy())
-        #     np.savetxt(f"{debug_dir}/parts_poses.txt", parts_poses.squeeze(0).numpy())
+        if debug == 1:
+            np.savetxt(f"{debug_dir}/leg_poses.txt", parts_poses.squeeze(0)[:, -7:].numpy())
+            np.sacetxt(f"{debug_dir}/top_poses.txt", parts_poses.squeeze(0)[:, 7:].numpy())
+            np.savetxt(f"{debug_dir}/parts_poses.txt", parts_poses.squeeze(0).numpy())
+            np.savetxt(f"{debug_dir}/leg_poses_est.txt", torch.stack(parts_poses_est["leg"], dim=1).squeeze(0).numpy())
+            np.savetxt(f"{debug_dir}/top_poses_est.txt", torch.stack(parts_poses_est["top"], dim=1).squeeze(0).numpy())
 
         n_success += success.sum().item()
 

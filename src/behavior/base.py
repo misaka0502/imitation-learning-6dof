@@ -49,8 +49,8 @@ class Actor(torch.nn.Module, metaclass=PostInitCaller):
     encoder2_proj: nn.Module
 
     # 在这里修改位姿估计的长度，由于用的是四元数表示，所以一个零件有7个数值
-    # parts_poses_dim: int = 7
-    parts_poses_dim: int = 14
+    parts_poses_dim: int = 7
+    # parts_poses_dim: int = 14
     # parts_poses_dim: int = 35
 
     def __post_init__(self, *args, **kwargs):
@@ -118,13 +118,13 @@ class Actor(torch.nn.Module, metaclass=PostInitCaller):
         image1 = image1.permute(0, 2, 3, 1)
         image2 = image2.permute(0, 2, 3, 1)
 
-        # # Encode the images and reshape back to (B, obs_horizon, -1)
-        # feature1: torch.Tensor = self.encoder1_proj(self.encoder1(image1)).reshape(
-        #     B, self.obs_horizon, -1
-        # )
-        # feature2: torch.Tensor = self.encoder2_proj(self.encoder2(image2)).reshape(
-        #     B, self.obs_horizon, -1
-        # )
+        # Encode the images and reshape back to (B, obs_horizon, -1)
+        feature1: torch.Tensor = self.encoder1_proj(self.encoder1(image1)).reshape(
+            B, self.obs_horizon, -1
+        )
+        feature2: torch.Tensor = self.encoder2_proj(self.encoder2(image2)).reshape(
+            B, self.obs_horizon, -1
+        )
 
         # # Apply the regularization to the features
         # feature1, feature2 = self.regularize_features(feature1, feature2)
@@ -135,8 +135,8 @@ class Actor(torch.nn.Module, metaclass=PostInitCaller):
         # 取所有零件的位姿
         # parts_poses: torch.Tensor = torch.cat([o["parts_poses"].unsqueeze(1) for o in obs], dim=1)
         # Reshape concatenate the features
-        # nobs = torch.cat([nrobot_state, feature1, feature2, parts_poses], dim=-1)
-        nobs = torch.cat([nrobot_state, parts_poses_top, parts_poses], dim=-1)
+        nobs = torch.cat([nrobot_state, feature1, feature2, parts_poses], dim=-1)
+        # nobs = torch.cat([nrobot_state, parts_poses_top, parts_poses], dim=-1)
         # nobs = torch.cat([nrobot_state, feature1, feature2, parts_poses, parts_poses_top], dim=-1)
         # nobs = torch.cat([nrobot_state, feature1, feature2], dim=-1)
 
